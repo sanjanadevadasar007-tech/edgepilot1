@@ -19,7 +19,8 @@ class DecisionEngineStage2(unittest.TestCase):
         r = recommend(BASE)
         keys = ("recommended_tier", "scores", "estimates", "explanation", "tradeoffs", "warnings", "assumptions", "architecture")
         self.assertTrue(all(k in r for k in keys))
-        self.assertEqual(r["recommended_tier"], "on_device")
+        self.assertIsNone(r["recommended_tier"])
+        self.assertEqual(r["details"]["ranking"], [])
         self.assertEqual(r["details"]["method"], "transparent_weighted_heuristic_v2")
         self.assertEqual(r["details"]["explanation_source"], "deterministic")
 
@@ -102,7 +103,11 @@ class DecisionEngineStage2(unittest.TestCase):
         self.assertEqual(r["details"]["score_breakdown"]["on_device"]["latency"]["origin"], "heuristic_profile")
 
     def test_decision_driver_matches_weighted_difference(self):
-        r = recommend(BASE)
+        metrics = {
+            "on_device": {"source": "estimated", "latency_ms": 15, "monthly_cost_inr": 900},
+            "far_edge": {"source": "estimated", "latency_ms": 30, "monthly_cost_inr": 500},
+        }
+        r = recommend(BASE, metrics_by_tier=metrics)
         drivers = r["details"]["decision_drivers"]
         self.assertEqual(len(drivers), 6)
         self.assertGreaterEqual(drivers[0]["advantage_points"], drivers[-1]["advantage_points"])
@@ -116,6 +121,35 @@ class DecisionEngineStage2(unittest.TestCase):
         self.assertTrue(0 <= affordability_score(1000, 1000) <= 100)
         self.assertEqual(affordability_score(0, 0), 100)
         self.assertEqual(affordability_score(100, 0), 0)
+
+    def test_tier_is_selected_only_when_both_slas_pass(self):
+        metrics = {
+            "on_device": {"source": "estimated", "latency_ms": 15, "monthly_cost_inr": 900},
+            "far_edge": {"source": "estimated", "latency_ms": 30, "monthly_cost_inr": 500},
+            "cloud": {"source": "estimated", "latency_ms": 120, "monthly_cost_inr": 300},
+        }
+        result = recommend(request(latency_requirement_ms=50), metrics_by_tier=metrics)
+        self.assertIn(result["recommended_tier"], ("on_device", "far_edge"))
+        selected = result["details"]["sla_checks"][result["recommended_tier"]]
+        self.assertTrue(selected["latency_pass"] and selected["cost_pass"])
+        self.assertFalse(result["details"]["sla_checks"]["cloud"]["eligible"])
+
+    def test_low_privacy_relaxed_latency_reweights_scores_without_ignoring_budget(self):
+        metrics = {
+            "on_device": {"source": "estimated", "latency_ms": 15, "monthly_cost_inr": 900},
+            "far_edge": {"source": "estimated", "latency_ms": 30, "monthly_cost_inr": 500},
+            "regional_edge": {"source": "estimated", "latency_ms": 55, "monthly_cost_inr": 1100},
+            "cloud": {"source": "estimated", "latency_ms": 120, "monthly_cost_inr": 300},
+        }
+        result = recommend(request(
+            latency_requirement_ms=200,
+            budget_monthly=200,
+            privacy_requirement="low"
+        ), metrics_by_tier=metrics)
+
+        self.assertGreater(result["scores"]["cloud"], result["scores"]["on_device"])
+        self.assertIsNone(result["recommended_tier"])
+        self.assertTrue(all(not check["eligible"] for check in result["details"]["sla_checks"].values()))
 
     def test_reject_invalid_optional_fields(self):
         fields = [

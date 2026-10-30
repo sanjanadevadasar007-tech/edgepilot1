@@ -42,7 +42,22 @@ def recommend(payload, *, metrics_by_tier=None, llm=None):
     blocked = evaluate(workload, metrics)
     gaps = evidence_gaps(workload, metrics)
     scores, breakdown, status = calculate(workload, metrics, blocked)
-    candidates = [tier for tier in TIERS if status[tier] == "eligible"]
+    tier_estimates = _tier_estimates(workload, metrics)
+    sla_checks = {
+        tier: {
+            "latency_pass": tier_estimates[tier]["latency_target_met"] is True,
+            "cost_pass": tier_estimates[tier]["budget_met"] is True,
+            "eligible": (
+                tier_estimates[tier]["latency_target_met"] is True
+                and tier_estimates[tier]["budget_met"] is True
+            )
+        }
+        for tier in TIERS
+    }
+    candidates = [
+        tier for tier in TIERS
+        if status[tier] == "eligible" and sla_checks[tier]["eligible"]
+    ]
     ranked = sorted(candidates, key=lambda tier: (-scores[tier], TIERS.index(tier)))
     winner = ranked[0] if ranked else None
     runner_up = ranked[1] if len(ranked) > 1 else None
@@ -55,7 +70,9 @@ def recommend(payload, *, metrics_by_tier=None, llm=None):
 
     warnings = ["DEMO HEURISTICS: scores are uncalibrated suitability indices, not probabilities or measured deployment rankings."]
     if not ranked:
-        warnings.append("No feasible placement found under the supplied mandatory constraints.")
+        warnings.append(
+            "No tier has both a supplied latency estimate within target and a supplied monthly cost within budget."
+        )
     if any(blocked[t] for t in TIERS):
         warnings.append("One or more deployment tiers failed hard feasibility checks; see feasibility details.")
     if winner and latency is None:
@@ -102,7 +119,9 @@ def recommend(payload, *, metrics_by_tier=None, llm=None):
         "scores": scores,
         "estimates": estimates,
         "explanation": explanation,
-        "tradeoffs": TRADEOFFS[winner] if winner else ["No deployment satisfies all declared hard constraints."],
+        "tradeoffs": TRADEOFFS[winner] if winner else [
+            "No deployment tier passes both supplied latency and monthly cost limits."
+        ],
         "warnings": warnings,
         "assumptions": assumptions,
         "architecture": build(winner),
@@ -115,11 +134,12 @@ def recommend(payload, *, metrics_by_tier=None, llm=None):
                             for tier in TIERS},
             "evidence_gaps": gaps,
             "score_breakdown": breakdown,
-            "weights": weights(workload),
+            "weights": weights(workload, metrics),
             "decision_drivers": decision_drivers(winner, runner_up, breakdown),
             "metric_sources": {tier: record["source"] for tier, record in metrics.items()},
             "metric_provenance": {tier: record["field_evidence"] for tier, record in metrics.items()},
-            "tier_estimates": _tier_estimates(workload, metrics),
+            "tier_estimates": tier_estimates,
+            "sla_checks": sla_checks,
             "explanation_source": explanation_source,
             "method": "transparent_weighted_heuristic_v2",
         },

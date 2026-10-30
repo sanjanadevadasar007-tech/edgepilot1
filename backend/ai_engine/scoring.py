@@ -7,14 +7,22 @@ from .config import TIERS, FACTORS, PROFILES
 from .metrics import field_source
 
 
-def weights(workload):
+def weights(workload, metrics=None):
+    known_costs = [
+        record["monthly_cost_inr"]
+        for record in (metrics or {}).values()
+        if record.get("monthly_cost_inr") is not None
+    ]
+    budget_is_below_known_costs = (
+        bool(known_costs) and workload["budget_monthly"] < min(known_costs)
+    )
     return {
         "latency": 5 if workload["latency_requirement_ms"] <= 50 else (3 if workload["latency_requirement_ms"] <= 150 else 1),
         "privacy": {"low": 1, "medium": 2, "high": 5}[workload["privacy_requirement"]],
         "data_locality": {"low": 1, "medium": 2, "high": 4}[workload["bandwidth_requirement"]],
         "resilience": {"low": 1, "medium": 2, "high": 4}[workload["criticality"]],
         "scalability": 6 if workload.get("concurrent_users", 0) >= 10000 else (3 if workload.get("concurrent_users", 0) >= 1000 else 1),
-        "affordability": 3,
+        "affordability": 5 if budget_is_below_known_costs else 3,
     }
 
 
@@ -45,7 +53,7 @@ def _readiness(record):
 
 
 def calculate(workload, metrics, blocked):
-    importance = weights(workload)
+    importance = weights(workload, metrics)
     denominator = sum(importance.values())
     scores, breakdown, qualifications = {}, {}, {}
     for tier in TIERS:

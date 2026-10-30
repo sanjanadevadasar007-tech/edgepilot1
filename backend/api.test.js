@@ -32,7 +32,8 @@ describe('EdgePilot API Integration Tests', () => {
     expect(res.body).toHaveProperty('scores');
     expect(res.body).toHaveProperty('estimates');
     expect(res.body.details.reliability.errors).toEqual([]);
-    expect(res.body.details.tier_estimates.on_device.latency_ms).toBeNull();
+    expect(res.body.details.tier_estimates.on_device.latency_ms).toBe(15);
+    expect(res.body.details.tier_estimates.on_device.latency_source).toBe('estimated');
   });
 
 });

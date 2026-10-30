@@ -2,6 +2,7 @@ const request = require('supertest');
 const express = require('express');
 const { callTeamEngine } = require('../services/pythonEngineBridge');
 const apiRoutes = require('../routes/apiRoutes');
+const { getMetricsForWorkload } = require('../services/stage3MetricService');
 
 jest.mock('../services/pythonEngineBridge', () => ({
   callTeamEngine: jest.fn()
@@ -18,6 +19,7 @@ const workload = {
   privacy_requirement: 'high',
   criticality: 'high'
 };
+const demoMetrics = getMetricsForWorkload(workload).metrics_by_tier;
 
 describe('Stage 5 and optimization API integration', () => {
   beforeEach(() => {
@@ -39,7 +41,7 @@ describe('Stage 5 and optimization API integration', () => {
     expect(callTeamEngine).toHaveBeenCalledWith('simulate', {
       request: { workload },
       changes: { privacy_requirement: 'low' },
-      metrics_by_tier: null,
+      metrics_by_tier: demoMetrics,
       scenario_metrics_by_tier: scenarioMetrics
     });
   });
@@ -62,7 +64,7 @@ describe('Stage 5 and optimization API integration', () => {
       target_tier: 'cloud',
       max_evaluations: 40,
       max_results: 5,
-      metrics_by_tier: null
+      metrics_by_tier: demoMetrics
     });
   });
 
@@ -80,12 +82,12 @@ describe('Stage 5 and optimization API integration', () => {
       workload,
       question: 'why_not_tier',
       alternative_tier: 'cloud',
-      metrics_by_tier: null,
+      metrics_by_tier: demoMetrics,
       cost_curves: null
     });
   });
 
-  test('POST /api/optimize ignores client-supplied metrics for unmatched workloads', async () => {
+  test('POST /api/optimize uses the demo metrics for unmatched workloads', async () => {
     const metrics = { custom: true };
     const costCurves = { scenario_id: 'workload-a' };
     await request(app)
@@ -95,7 +97,34 @@ describe('Stage 5 and optimization API integration', () => {
 
     expect(callTeamEngine).toHaveBeenCalledWith('optimize', {
       workload,
-      metrics_by_tier: null,
+      metrics_by_tier: demoMetrics,
+      cost_curves: null
+    });
+  });
+
+  test('POST /api/recommend normalizes workload aliases and forwards shared metrics', async () => {
+    await request(app)
+      .post('/api/recommend')
+      .send({
+        workload: {
+          latency_target: 200,
+          budget: 200,
+          privacy: 'LOW',
+          criticality: 'HIGH',
+          bandwidth_requirement: 'medium'
+        }
+      })
+      .expect(200);
+
+    expect(callTeamEngine).toHaveBeenCalledWith('recommend', {
+      workload: {
+        latency_requirement_ms: 200,
+        budget_monthly: 200,
+        privacy_requirement: 'low',
+        criticality: 'high',
+        bandwidth_requirement: 'medium'
+      },
+      metrics_by_tier: demoMetrics,
       cost_curves: null
     });
   });

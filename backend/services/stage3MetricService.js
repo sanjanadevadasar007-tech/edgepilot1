@@ -15,21 +15,7 @@ function readJson(filename) {
 }
 
 function getMetricsForWorkload(workload) {
-  const supportedProfile =
-    workload.application_type === "smart_camera" &&
-    workload.model_name === "mobilenet_v2" &&
-    workload.target_device === "Samsung Galaxy S25 (Family)" &&
-    workload.runtime === "tflite" &&
-    workload.precision === "float";
-
-  if (!supportedProfile) {
-    return {
-      metrics_by_tier: null,
-      cost_curves: null,
-      evidence_mode: "unavailable"
-    };
-  }
-
+  // Demo fixtures are returned for every workload; they are illustrative, not device-matched.
   return {
     metrics_by_tier: readJson(
       "stage6_pareto_tradeoff_metrics_DEMO.json"

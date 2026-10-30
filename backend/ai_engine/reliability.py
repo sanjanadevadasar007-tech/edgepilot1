@@ -105,6 +105,7 @@ def audit_recommendation(payload, result):
         errors.append("Ranking must list unique recognized tiers")
         ranks = []
     eligible = []
+    recommendable = []
     if len(feas) == len(TIERS):
         for tier in TIERS:
             f = feas[tier]
@@ -119,18 +120,32 @@ def audit_recommendation(payload, result):
                 eligible.append(tier)
             elif scores.get(tier) != 0:
                 errors.append(f"Excluded tier {tier} must have zero selectable score")
-        if set(ranks) != set(eligible):
-            errors.append("Ranking and feasible tiers disagree")
+        sla_checks = details.get("sla_checks")
+        if not isinstance(sla_checks, dict) or set(sla_checks) != set(TIERS):
+            errors.append("Latency and budget checks must cover all four tiers")
+            sla_checks = {}
+        for tier in eligible:
+            checks = sla_checks.get(tier, {})
+            if not isinstance(checks, dict) or type(checks.get("latency_pass")) is not bool or type(checks.get("cost_pass")) is not bool:
+                errors.append(f"Malformed latency and budget checks for {tier}")
+                continue
+            expected_eligible = checks["latency_pass"] and checks["cost_pass"]
+            if checks.get("eligible") is not expected_eligible:
+                errors.append(f"Combined SLA eligibility is inconsistent for {tier}")
+            if expected_eligible:
+                recommendable.append(tier)
+        if set(ranks) != set(recommendable):
+            errors.append("Ranking and tiers passing both SLAs disagree")
         if len(scores) == len(TIERS) and all(_number(v, 0, 100) for v in scores.values()):
-            expected = sorted(eligible, key=lambda t: (-scores[t], TIERS.index(t)))
+            expected = sorted(recommendable, key=lambda t: (-scores[t], TIERS.index(t)))
             if ranks != expected:
-                errors.append("Ranking is not sorted by eligible suitability")
+                errors.append("Ranking is not sorted by suitability among tiers passing both SLAs")
             if result.get("recommended_tier") != (expected[0] if expected else None):
-                errors.append("Recommended tier is not the highest-ranked feasible tier")
+                errors.append("Recommended tier is not the highest-ranked tier passing both SLAs")
     if result.get("recommended_tier") not in (None, *TIERS):
         errors.append("Unrecognized recommended tier")
-    if result.get("recommended_tier") is None and eligible:
-        errors.append("No winner despite eligible alternatives")
+    if result.get("recommended_tier") is None and recommendable:
+        errors.append("No winner despite tiers passing both SLAs")
 
     estimates = result.get("estimates")
     tiers = details.get("tier_estimates", {})

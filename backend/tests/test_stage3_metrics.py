@@ -23,11 +23,12 @@ class Stage3EvidenceTests(unittest.TestCase):
     def test_existing_request_still_works(self):
         r = recommend(BASE)
         self.assertEqual(r["details"]["method"], "transparent_weighted_heuristic_v2")
-        self.assertEqual(r["recommended_tier"], "on_device")
+        self.assertIsNone(r["recommended_tier"])
 
     def test_nested_latency_estimate_appears(self):
         r = recommend(BASE, metrics_by_tier={"on_device": {"latency_ms": ev(20)}})
-        self.assertEqual(r["estimates"]["latency_ms"], 20)
+        self.assertIsNone(r["estimates"]["latency_ms"])
+        self.assertEqual(r["details"]["tier_estimates"]["on_device"]["latency_ms"], 20)
         self.assertEqual(r["details"]["tier_estimates"]["on_device"]["latency_source"], "estimated")
         self.assertFalse(r["details"]["tier_estimates"]["on_device"]["latency_target_verified"])
 

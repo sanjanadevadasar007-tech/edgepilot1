@@ -35,7 +35,7 @@ describe('Stage 6 optimization API integration', () => {
     expect(crossing.monthly_requests).toBeCloseTo(8571.43, 2);
   });
 
-  test('POST /api/optimize reports insufficient data for an unmatched workload', async () => {
+  test('POST /api/optimize uses illustrative metrics and omits unmatched cost curves', async () => {
     const base = readExample('stage6_hybrid_request_DEMO.json');
     const payload = {
       ...base,
@@ -46,8 +46,8 @@ describe('Stage 6 optimization API integration', () => {
     const response = await request(app).post('/api/optimize').send(payload);
 
     expect(response.statusCode).toBe(200);
-    expect(response.body.details.optimization.pareto.status).toBe('insufficient_comparable_data');
-    expect(response.body.details.optimization.pareto.non_dominated_tiers).toEqual([]);
+    expect(response.body.details.optimization.pareto.status).toBe('provisional_estimates');
+    expect(response.body.details.optimization.pareto.non_dominated_tiers.length).toBeGreaterThan(0);
     expect(response.body.details.optimization.cost_break_even.status).toBe('not_available');
   });
 

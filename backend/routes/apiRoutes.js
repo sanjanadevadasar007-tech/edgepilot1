@@ -6,6 +6,7 @@ const {
 const express = require('express');
 const router = express.Router();
 const { callTeamEngine } = require('../services/pythonEngineBridge');
+const { calculateSuitability, normalizeWorkload, costCurvesMatchWorkload } = require('../services/suitabilityService');
 const { generatePdfReport } = require('../services/reportService');
 
 function handleRouteError(res, error, operation) {
@@ -24,21 +25,23 @@ function getRequestPayload(req) {
   if (req.body.request) {
     return req.body.request;
   }
-  const workload = req.body.workload || req.body;
+  const workload = normalizeWorkload(req.body.workload || req.body);
   return { workload };
 }
 
 function getPayloadWithMetrics(req) {
   const requestPayload = getRequestPayload(req);
-  const workload = requestPayload.workload;
+  const workload = normalizeWorkload(requestPayload.workload);
+  const normalizedRequestPayload = { ...requestPayload, workload };
 
   const evidence = getMetricsForWorkload(workload);
 
   return {
-    requestPayload,
+    requestPayload: normalizedRequestPayload,
     workload,
     stage3Metrics: evidence.metrics_by_tier,
-    costCurves: evidence.cost_curves
+    evidenceMode: evidence.evidence_mode,
+    costCurves: costCurvesMatchWorkload(workload, evidence.cost_curves)
   };
 }
 
@@ -53,16 +56,13 @@ router.get('/health', (req, res) => {
 // POST /api/recommend
 router.post('/recommend', async (req, res) => {
   try {
-    const { workload, stage3Metrics, costCurves } = getPayloadWithMetrics(req);
-    const pyResult = await callTeamEngine('recommend', {
-      workload,
-      metrics_by_tier: stage3Metrics,
-      cost_curves: costCurves
+    const { workload, stage3Metrics, evidenceMode, costCurves } = getPayloadWithMetrics(req);
+    const result = await calculateSuitability(workload, {
+      metricsByTier: stage3Metrics,
+      costCurves,
+      evidenceMode
     });
-    if (!pyResult.metrics_by_tier) {
-      pyResult.metrics_by_tier = stage3Metrics;
-    }
-    res.json(pyResult);
+    res.json(result);
   } catch (err) {
     handleRouteError(res, err, 'Recommendation');
   }
@@ -137,18 +137,12 @@ router.post('/optimize', async (req, res) => {
 // POST /api/report
 router.post('/report', async (req, res) => {
   try {
-    const { workload, stage3Metrics, costCurves } = getPayloadWithMetrics(req);
-    const engineResult = await callTeamEngine('recommend', {
-      workload,
-      metrics_by_tier: stage3Metrics,
-      cost_curves: costCurves
+    const { workload, stage3Metrics, evidenceMode, costCurves } = getPayloadWithMetrics(req);
+    const reportData = await calculateSuitability(workload, {
+      metricsByTier: stage3Metrics,
+      costCurves,
+      evidenceMode
     });
-
-    const reportData = {
-      ...engineResult,
-      workload,
-      metrics_by_tier: stage3Metrics
-    };
 
     generatePdfReport(reportData, res);
   } catch (err) {

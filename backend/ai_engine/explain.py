@@ -14,7 +14,7 @@ from .config import LABELS
 
 def default_explanation(tier, scores, blocked, workload):
     if tier is None:
-        return "No deployment tier satisfies every supplied hard constraint. Adjust constraints or provide compatible hardware/infrastructure."
+        return "No deployment tier has supplied latency and monthly cost estimates that satisfy both limits. Adjust the limits or provide compatible workload-specific evidence."
     allowed = [t for t in scores if not blocked[t]]
     ordered = sorted(allowed, key=lambda t: (-scores[t], list(scores).index(t)))
     second = ordered[1] if len(ordered) > 1 else None

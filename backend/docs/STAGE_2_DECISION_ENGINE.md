@@ -11,13 +11,13 @@ Stage 2 replaces **five Python source files** while keeping Stage 1 benchmark ma
 - `ai_engine/recommender.py`: preserves v1 response keys and adds `details.weights`, `details.evidence_gaps`, `details.decision_drivers`, `details.explanation_source`.
 - `tests/test_stage2_decision.py`: 20 offline tests covering the changes.
 
-The formula is `score(tier) = sum(weight_i * score_i(tier)) / sum(weight_i)` for eligible tiers, and zero for excluded tiers. Scores are *heuristic suitability indices* (not calibrated probabilities or benchmarks). All criterion profiles are project assumptions and require validation. Tier order in ties is stable.
+The formula is `score(tier) = sum(weight_i * score_i(tier)) / sum(weight_i)` for hard-constraint-eligible tiers, and zero for tiers excluded by hard constraints. Scores are *heuristic suitability indices* (not calibrated probabilities or benchmarks). A tier can be recommended only if supplied latency and cost values both meet their limits; among those tiers, the highest score wins. Missing values fail the recommendation gate. All criterion profiles are project assumptions and require validation. Tier order in ties is stable.
 
 ### Handling unknown values
 
 If **no cost** is supplied for a tier, affordability gets 50/100 (neutral prior) with `origin: unknown_neutral_prior`, *not* an actual predicted cost. No money value is returned in `estimates.monthly_cost`. The default neutral score still influences the ranking; the associated uncertainty is explicit in the response. Stage 3 will improve comparability by providing sourced per-tier estimates.
 
-`latency_ms` in tier metrics means **end-to-end** latency under a comparable workload. `inference_latency_ms` means only time spent running the model and does not change end-to-end score. An E2E *measured* latency beyond deadline is a hard gate. An *estimated* latency beyond deadline is a soft scoring penalty. `quoted` monthly cost beyond budget is gated; `estimated` cost is a preference penalty. Quotes and measurements must be genuine and accurately identified by the integration layer.
+`latency_ms` in tier metrics means **end-to-end** latency under a comparable workload. `inference_latency_ms` means only time spent running the model and does not change end-to-end score. An E2E *measured* latency beyond deadline is a hard feasibility failure. An *estimated* latency beyond deadline remains scoreable for comparison but cannot pass the recommendation gate. Measured, quoted, and estimated costs are handled the same way for the recommendation gate: a value beyond budget cannot pass. Quotes and measurements must be genuine and accurately identified by the integration layer.
 
 ### Hard feasibility rules
 
@@ -32,7 +32,7 @@ If **no cost** is supplied for a tier, affordability gets 50/100 (neutral prior)
 9. Evidenced data residency mismatch / compliance failure excludes the affected tier.
 10. Measured availability falls below explicit `minimum_availability_percent`.
 
-Any unverified requirement stays **unknown**, not automatically feasible or infeasible. `details.feasibility[tier].eligible` means not ruled out; `details.evidence_gaps[tier]` lists missing evidence. Policy/compliance statements are assumed to be properly sourced from trusted data supplied by Person 3; Stage 2 cannot independently certify compliance.
+Any unverified requirement stays **unknown**, not automatically feasible or infeasible. `details.feasibility[tier].eligible` means not ruled out by hard policy/evidence checks; `details.sla_checks[tier].eligible` means both numeric latency and cost checks pass; only the intersection can be ranked. `details.evidence_gaps[tier]` lists missing evidence. Policy/compliance statements are assumed to be properly sourced from trusted data supplied by Person 3; Stage 2 cannot independently certify compliance.
 
 ### New optional request fields
 

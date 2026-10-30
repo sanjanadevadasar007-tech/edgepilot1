@@ -18,13 +18,7 @@ export default defineConfig(({ command, mode }) => {
         '/api': {
           target: apiBackendUrl,
           changeOrigin: true,
-          configure(proxy) {
-            proxy.on('proxyReq', (proxyRequest, request) => {
-              if (request.url?.split('?')[0] !== '/api/health' && apiAuthToken) {
-                proxyRequest.setHeader('Authorization', `Bearer ${apiAuthToken}`);
-              }
-            });
-          },
+          headers: apiAuthToken ? { Authorization: `Bearer ${apiAuthToken}` } : {},
         },
       },
     },

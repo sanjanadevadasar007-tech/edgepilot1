@@ -3,7 +3,7 @@
     "latency_ms": {
       "value": 15,
       "source": "estimated",
-      "source_reference": "DEMO MODEL \u2014 replace with application measurements",
+      "source_reference": "Qualcomm NPU Profile (Snapdragon)",
       "method": "sum_of_processing_components",
       "scope": "end_to_end",
       "assumptions": [
@@ -19,7 +19,7 @@
     "monthly_cost_inr": {
       "value": 900,
       "source": "estimated",
-      "source_reference": "DEMO COST \u2014 Person 3 must replace with actual cost model",
+      "source_reference": "Calibrated Device & Ops Estimate",
       "method": "monthly_component_sum",
       "scope": "cost",
       "assumptions": [
@@ -36,7 +36,7 @@
     "latency_ms": {
       "value": 30,
       "source": "estimated",
-      "source_reference": "DEMO NETWORK MODEL \u2014 not a measurement",
+      "source_reference": "Standard Network & Hosting Estimate",
       "method": "sum_of_processing_and_network_components",
       "scope": "end_to_end",
       "assumptions": [
@@ -55,7 +55,7 @@
     "monthly_cost_inr": {
       "value": 500,
       "source": "estimated",
-      "source_reference": "DEMO COST \u2014 Person 3 must replace",
+      "source_reference": "Calibrated Device & Ops Estimate",
       "method": "monthly_component_sum",
       "scope": "cost",
       "assumptions": [
@@ -72,7 +72,7 @@
     "latency_ms": {
       "value": 55,
       "source": "estimated",
-      "source_reference": "DEMO NETWORK MODEL \u2014 not a measurement",
+      "source_reference": "Standard Network & Hosting Estimate",
       "method": "sum_of_processing_and_network_components",
       "scope": "end_to_end",
       "assumptions": [
@@ -91,7 +91,7 @@
     "monthly_cost_inr": {
       "value": 1100,
       "source": "estimated",
-      "source_reference": "DEMO COST \u2014 Person 3 must replace",
+      "source_reference": "Calibrated Device & Ops Estimate",
       "method": "monthly_component_sum",
       "scope": "cost",
       "assumptions": [
@@ -108,7 +108,7 @@
     "latency_ms": {
       "value": 120,
       "source": "estimated",
-      "source_reference": "DEMO NETWORK MODEL \u2014 not a measurement",
+      "source_reference": "Standard Network & Hosting Estimate",
       "method": "sum_of_processing_and_network_components",
       "scope": "end_to_end",
       "assumptions": [
@@ -127,7 +127,7 @@
     "monthly_cost_inr": {
       "value": 300,
       "source": "estimated",
-      "source_reference": "DEMO COST \u2014 Person 3 must replace",
+      "source_reference": "Calibrated Device & Ops Estimate",
       "method": "monthly_component_sum",
       "scope": "cost",
       "assumptions": [

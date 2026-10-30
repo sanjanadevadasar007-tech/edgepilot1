@@ -17,7 +17,7 @@ TIERS = {"on_device", "far_edge", "regional_edge", "cloud"}
 class TestEdgepilot(unittest.TestCase):
     def test_exact_team_request_works(self):
         result = recommend(SAMPLE)
-        self.assertEqual(result["recommended_tier"], "on_device")
+        self.assertIsNone(result["recommended_tier"])
         self.assertEqual(set(result["scores"]), TIERS)
         self.assertTrue(all(0 <= v <= 100 for v in result["scores"].values()))
         self.assertTrue(all(key in result for key in ("recommended_tier", "scores", "estimates", "explanation", "tradeoffs", "warnings", "assumptions", "architecture")))
@@ -43,7 +43,9 @@ class TestEdgepilot(unittest.TestCase):
     def test_offline_forces_local(self):
         modified = copy.deepcopy(SAMPLE)
         modified["workload"]["require_offline"] = True
-        result = recommend(modified)
+        result = recommend(modified, metrics_by_tier={
+            "on_device": {"source": "estimated", "latency_ms": 15, "monthly_cost_inr": 900}
+        })
         self.assertEqual(result["recommended_tier"], "on_device")
         for tier in TIERS - {"on_device"}:
             self.assertEqual(result["scores"][tier], 0)
@@ -61,7 +63,13 @@ class TestEdgepilot(unittest.TestCase):
         modified = copy.deepcopy(SAMPLE)
         modified["workload"].update({"latency_requirement_ms": 400, "privacy_requirement": "low",
                                      "criticality": "low", "bandwidth_requirement": "low", "concurrent_users": 50000})
-        self.assertEqual(recommend(modified)["recommended_tier"], "cloud")
+        metrics = {
+            "on_device": {"source": "estimated", "latency_ms": 15, "monthly_cost_inr": 900},
+            "far_edge": {"source": "estimated", "latency_ms": 30, "monthly_cost_inr": 500},
+            "regional_edge": {"source": "estimated", "latency_ms": 55, "monthly_cost_inr": 1100},
+            "cloud": {"source": "estimated", "latency_ms": 120, "monthly_cost_inr": 300},
+        }
+        self.assertEqual(recommend(modified, metrics_by_tier=metrics)["recommended_tier"], "cloud")
 
     def test_infeasible_measured_latency(self):
         m = {"on_device": {"source": "measured", "latency_ms": 90, "source_note": "E2E load test"}}
@@ -154,7 +162,10 @@ class TestEdgepilot(unittest.TestCase):
 
     def test_counterfactual_analysis(self):
         result = compare_scenarios(SAMPLE, {"model_ram_required_mb": 10000,
-                                            "device_available_ram_mb": 1000})
+                                            "device_available_ram_mb": 1000}, metrics_by_tier={
+            "on_device": {"source": "estimated", "latency_ms": 15, "monthly_cost_inr": 900},
+            "far_edge": {"source": "estimated", "latency_ms": 30, "monthly_cost_inr": 500},
+        })
         self.assertEqual(result["original_recommendation"], "on_device")
         self.assertNotEqual(result["new_recommendation"], "on_device")
         self.assertTrue(result["changed"])
