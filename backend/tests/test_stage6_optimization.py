@@ -10,6 +10,7 @@ from ai_engine.optimization import (
     optimize_deployment, pareto_frontier,
 )
 from ai_engine.benchmark_registry import read_catalog
+from ai_engine.team_handoff import TeamEngine
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -77,6 +78,17 @@ class Stage6Tests(unittest.TestCase):
         self.assertEqual(len(hybrid['nodes']), 4)
         self.assertEqual(hybrid['critical_path'], ['device', 'local_inference'])
         self.assertEqual(len(hybrid['connections']), 3)
+
+    def test_team_engine_optimize_exposes_hybrid_architecture(self):
+        engine = TeamEngine(benchmark_catalog=self.catalog)
+        result = engine.optimize(self.req, metrics_by_tier=self.metrics, cost_curves=self.curves)
+        hybrid = result["details"]["optimization"]["hybrid"]
+
+        self.assertEqual(hybrid["status"], "candidate_requires_validation")
+        self.assertEqual(len(hybrid["nodes"]), 4)
+        self.assertEqual(len(hybrid["connections"]), 3)
+        self.assertNotIn("hybrid", result["scores"])
+        self.assertEqual(result["details"]["reliability"]["errors"], [])
 
     def test_08_hybrid_does_not_override_required_tier(self):
         output = self.run_engine()

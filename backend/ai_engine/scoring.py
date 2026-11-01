@@ -1,4 +1,4 @@
-"""Transparent weighted multi-criteria suitability scoring (v2).
+"""Transparent weighted multi-criteria suitability scoring (v3).
 
 Qualitative tier profiles are hypotheses. Unknown cost uses a transparent neutral
 prior of 50; never confuse the placeholder with observed affordability.
@@ -7,22 +7,21 @@ from .config import TIERS, FACTORS, PROFILES
 from .metrics import field_source
 
 
-def weights(workload, metrics=None):
-    known_costs = [
-        record["monthly_cost_inr"]
-        for record in (metrics or {}).values()
-        if record.get("monthly_cost_inr") is not None
-    ]
-    budget_is_below_known_costs = (
-        bool(known_costs) and workload["budget_monthly"] < min(known_costs)
-    )
+def weights(workload):
+    bandwidth_scalability = {"low": 3, "medium": 5, "high": 7}[workload["bandwidth_requirement"]]
+    concurrent_users = workload.get("concurrent_users", 0)
+    if concurrent_users >= 10000:
+        bandwidth_scalability = max(bandwidth_scalability, 9)
+    elif concurrent_users >= 1000:
+        bandwidth_scalability = max(bandwidth_scalability, 7)
+
     return {
-        "latency": 5 if workload["latency_requirement_ms"] <= 50 else (3 if workload["latency_requirement_ms"] <= 150 else 1),
-        "privacy": {"low": 1, "medium": 2, "high": 5}[workload["privacy_requirement"]],
-        "data_locality": {"low": 1, "medium": 2, "high": 4}[workload["bandwidth_requirement"]],
-        "resilience": {"low": 1, "medium": 2, "high": 4}[workload["criticality"]],
-        "scalability": 6 if workload.get("concurrent_users", 0) >= 10000 else (3 if workload.get("concurrent_users", 0) >= 1000 else 1),
-        "affordability": 5 if budget_is_below_known_costs else 3,
+        "latency": 6 if workload["latency_requirement_ms"] <= 50 else (5 if workload["latency_requirement_ms"] <= 100 else (3 if workload["latency_requirement_ms"] <= 150 else 1)),
+        "privacy": {"low": 1, "medium": 4, "high": 22}[workload["privacy_requirement"]],
+        "data_locality": 1,
+        "resilience": {"low": 1, "medium": 3, "high": 10}[workload["criticality"]],
+        "scalability": bandwidth_scalability,
+        "affordability": 5,
     }
 
 
@@ -41,9 +40,14 @@ def latency_score(actual, deadline):
 def affordability_score(cost, budget):
     if budget == 0:
         return 100.0 if cost == 0 else 0.0
-    if cost <= budget:
-        return clamp(100 - 25 * cost / budget)
-    return clamp(75 - 75 * (cost - budget) / budget)
+    return clamp(100 - 100 * cost / budget)
+
+
+def relative_cost_score(cost, known_costs):
+    low, high = min(known_costs), max(known_costs)
+    if low == high:
+        return 50.0
+    return clamp(100 * (high - cost) / (high - low))
 
 
 def _readiness(record):
@@ -53,8 +57,13 @@ def _readiness(record):
 
 
 def calculate(workload, metrics, blocked):
-    importance = weights(workload, metrics)
+    importance = weights(workload)
     denominator = sum(importance.values())
+    known_costs = [
+        record["monthly_cost_inr"]
+        for record in metrics.values()
+        if record.get("monthly_cost_inr") is not None
+    ]
     scores, breakdown, qualifications = {}, {}, {}
     for tier in TIERS:
         factor_scores = {**PROFILES[tier], "affordability": 50.0}
@@ -65,7 +74,9 @@ def calculate(workload, metrics, blocked):
             factor_scores["latency"] = latency_score(tier_metric["latency_ms"], workload["latency_requirement_ms"])
             origins["latency"] = f'{field_source(tier_metric, "latency_ms")}_end_to_end_latency'
         if "monthly_cost_inr" in tier_metric:
-            factor_scores["affordability"] = affordability_score(tier_metric["monthly_cost_inr"], workload["budget_monthly"])
+            budget_score = affordability_score(tier_metric["monthly_cost_inr"], workload["budget_monthly"])
+            relative_score = relative_cost_score(tier_metric["monthly_cost_inr"], known_costs)
+            factor_scores["affordability"] = 0.25 * budget_score + 0.75 * relative_score
             origins["affordability"] = f'{field_source(tier_metric, "monthly_cost_inr")}_monthly_cost'
         # Report a verified availability input when known; avoid pretending
         # it is identical to reliability without a validated transformation.

@@ -54,6 +54,17 @@ function checkConstraint(value, limit) {
   return value <= limit ? 'PASS' : 'FAIL';
 }
 
+function formatSlaStatus(status, value, limit) {
+  const labels = {
+    pass: 'PASS',
+    provisional_pass: 'PROVISIONAL PASS',
+    provisional_fail: 'PROVISIONAL FAIL',
+    fail: 'FAIL',
+    unknown: 'N/A'
+  };
+  return labels[status] || checkConstraint(value, limit);
+}
+
 function truncateSource(value) {
   const source = String(value);
   return source.length > 39 ? `${source.slice(0, 36)}...` : source;
@@ -229,6 +240,9 @@ function generatePdfReport(data, res) {
       : 'No source reference';
     const latencyEvidence = getEvidenceLabel(latObj, estimate.latency_source);
     const costEvidence = getEvidenceLabel(costObj, estimate.cost_source);
+    const slaCheck = data.details && data.details.sla_checks
+      ? data.details.sla_checks[tKey]
+      : null;
     const rowHeight = 34;
 
     const isSelected = tKey === recKey;
@@ -242,7 +256,12 @@ function generatePdfReport(data, res) {
     doc.text(costValue === null ? 'Not available' : `INR ${formatMetric(costValue)}`, 170, yPos + 6, { width: 75 });
     doc.text(`${latencyEvidence}: ${truncateSource(latSrc)}`, 250, yPos + 4, { width: 108, height: rowHeight - 4, ellipsis: true });
     doc.text(`${costEvidence}: ${truncateSource(costSource)}`, 363, yPos + 4, { width: 108, height: rowHeight - 4, ellipsis: true });
-    doc.text(`Lat ${checkConstraint(latValue, latencyTarget)}\nCost ${checkConstraint(costValue, monthlyBudget)}`, 478, yPos + 3, { width: 78, height: rowHeight - 3 });
+    doc.text(
+      `Lat ${formatSlaStatus(slaCheck && slaCheck.latency_status, latValue, latencyTarget)}\nCost ${formatSlaStatus(slaCheck && slaCheck.cost_status, costValue, monthlyBudget)}`,
+      478,
+      yPos + 3,
+      { width: 78, height: rowHeight - 3 }
+    );
 
     yPos += rowHeight;
   });

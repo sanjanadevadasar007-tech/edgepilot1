@@ -13,6 +13,7 @@ from .counterfactuals import discover_flips
 from .qualcomm_grounded import QualcommGroundedReasoner
 from .reliability import audit_recommendation, guarded_recommendation, ReliabilityError, validate_external_request
 from .scenarios import simulate_scenario
+from .optimization import analyze_optimization
 
 CONTRACT_VERSION = "1.0"
 
@@ -54,9 +55,17 @@ class TeamEngine:
         )
 
     def optimize(self, payload, *, metrics_by_tier=None, cost_curves=None):
-        """Return full audited result with details.optimization."""
-        return self.recommend(payload, metrics_by_tier=metrics_by_tier,
-                              cost_curves=cost_curves, llm=None)
+        """Return the audited recommendation plus Pareto, hybrid, and cost analyses."""
+        result = self.recommend(payload, metrics_by_tier=metrics_by_tier,
+                                cost_curves=cost_curves, llm=None)
+        result["details"]["optimization"] = analyze_optimization(
+            payload, result, cost_curves=cost_curves
+        )
+        audit = audit_recommendation(payload, result)
+        if audit["errors"]:
+            raise ReliabilityError("EdgePilot optimization failed internal audit: " + "; ".join(audit["errors"]))
+        result["details"]["reliability"] = audit
+        return result
 
     def simulate(self, payload, *, changes, metrics_by_tier=None,
                  scenario_metrics_by_tier=None):

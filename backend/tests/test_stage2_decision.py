@@ -2,7 +2,7 @@
 from copy import deepcopy
 import unittest
 from ai_engine.recommender import recommend
-from ai_engine.scoring import latency_score, affordability_score
+from ai_engine.scoring import latency_score, affordability_score, weights
 
 BASE = {"workload": {"latency_requirement_ms": 50, "bandwidth_requirement": "medium",
                      "budget_monthly": 1000, "privacy_requirement": "high", "criticality": "high"}}
@@ -21,7 +21,7 @@ class DecisionEngineStage2(unittest.TestCase):
         self.assertTrue(all(k in r for k in keys))
         self.assertIsNone(r["recommended_tier"])
         self.assertEqual(r["details"]["ranking"], [])
-        self.assertEqual(r["details"]["method"], "transparent_weighted_heuristic_v2")
+        self.assertEqual(r["details"]["method"], "transparent_weighted_heuristic_v3")
         self.assertEqual(r["details"]["explanation_source"], "deterministic")
 
     def test_unknown_cost_is_neutral_and_not_presented_as_real_cost(self):
@@ -111,9 +111,10 @@ class DecisionEngineStage2(unittest.TestCase):
         drivers = r["details"]["decision_drivers"]
         self.assertEqual(len(drivers), 6)
         self.assertGreaterEqual(drivers[0]["advantage_points"], drivers[-1]["advantage_points"])
+        winner, runner_up = r["details"]["ranking"][:2]
         self.assertEqual(sum(x["advantage_points"] for x in drivers),
-                         sum(round(r["details"]["score_breakdown"]["on_device"][f]["weighted_contribution"]
-                                   - r["details"]["score_breakdown"]["far_edge"][f]["weighted_contribution"], 2)
+                         sum(round(r["details"]["score_breakdown"][winner][f]["weighted_contribution"]
+                                   - r["details"]["score_breakdown"][runner_up][f]["weighted_contribution"], 2)
                              for f in r["details"]["weights"]))
 
     def test_valid_scoring_is_finite(self):
@@ -122,17 +123,32 @@ class DecisionEngineStage2(unittest.TestCase):
         self.assertEqual(affordability_score(0, 0), 100)
         self.assertEqual(affordability_score(100, 0), 0)
 
-    def test_tier_is_selected_only_when_both_slas_pass(self):
+    def test_bandwidth_changes_scalability_not_locality_weight(self):
+        low_bandwidth = weights(request(bandwidth_requirement="low")["workload"])
+        high_bandwidth = weights(request(bandwidth_requirement="high")["workload"])
+
+        self.assertEqual(low_bandwidth["data_locality"], high_bandwidth["data_locality"])
+        self.assertGreater(high_bandwidth["scalability"], low_bandwidth["scalability"])
+
+    def test_relaxed_latency_has_low_weight(self):
+        relaxed = weights(request(latency_requirement_ms=1000)["workload"])
+        strict = weights(request(latency_requirement_ms=50)["workload"])
+
+        self.assertEqual(relaxed["latency"], 1)
+        self.assertGreater(strict["latency"], relaxed["latency"])
+
+    def test_estimated_sla_miss_is_ranked_as_provisional_not_hard_blocked(self):
         metrics = {
             "on_device": {"source": "estimated", "latency_ms": 15, "monthly_cost_inr": 900},
             "far_edge": {"source": "estimated", "latency_ms": 30, "monthly_cost_inr": 500},
             "cloud": {"source": "estimated", "latency_ms": 120, "monthly_cost_inr": 300},
         }
         result = recommend(request(latency_requirement_ms=50), metrics_by_tier=metrics)
-        self.assertIn(result["recommended_tier"], ("on_device", "far_edge"))
-        selected = result["details"]["sla_checks"][result["recommended_tier"]]
-        self.assertTrue(selected["latency_pass"] and selected["cost_pass"])
-        self.assertFalse(result["details"]["sla_checks"]["cloud"]["eligible"])
+        self.assertIsNotNone(result["recommended_tier"])
+        self.assertTrue(result["details"]["sla_checks"][result["recommended_tier"]]["selectable"])
+        self.assertEqual(result["details"]["sla_checks"]["cloud"]["latency_status"], "provisional_fail")
+        self.assertTrue(result["details"]["feasibility"]["cloud"]["eligible"])
+        self.assertEqual(result["details"]["status"], "provisional")
 
     def test_low_privacy_relaxed_latency_reweights_scores_without_ignoring_budget(self):
         metrics = {
@@ -148,8 +164,53 @@ class DecisionEngineStage2(unittest.TestCase):
         ), metrics_by_tier=metrics)
 
         self.assertGreater(result["scores"]["cloud"], result["scores"]["on_device"])
-        self.assertIsNone(result["recommended_tier"])
+        self.assertEqual(result["recommended_tier"], "cloud")
         self.assertTrue(all(not check["eligible"] for check in result["details"]["sla_checks"].values()))
+        self.assertEqual(result["details"]["status"], "provisional_sla_failure")
+
+    def test_workload_profiles_can_select_each_tier_when_supported_by_inputs(self):
+        from pathlib import Path
+        import json
+
+        metrics = json.loads(Path("examples/stage6_pareto_tradeoff_metrics_DEMO.json").read_text())
+        cases = [
+            ("cloud", {"latency_requirement_ms": 1000, "bandwidth_requirement": "high",
+                       "budget_monthly": 20000, "privacy_requirement": "low",
+                       "criticality": "low"}),
+            ("on_device", {"latency_requirement_ms": 50, "bandwidth_requirement": "medium",
+                           "budget_monthly": 1000, "privacy_requirement": "high",
+                           "criticality": "high"}),
+            ("far_edge", {"latency_requirement_ms": 35, "bandwidth_requirement": "high",
+                          "budget_monthly": 650, "privacy_requirement": "medium",
+                          "criticality": "low"}),
+            ("regional_edge", {"latency_requirement_ms": 60, "bandwidth_requirement": "high",
+                               "budget_monthly": 2000, "privacy_requirement": "medium",
+                               "criticality": "high", "concurrent_users": 1000}),
+        ]
+        for expected_tier, workload_overrides in cases:
+            with self.subTest(expected_tier=expected_tier):
+                result = recommend(request(**workload_overrides), metrics_by_tier=metrics)
+                self.assertEqual(result["recommended_tier"], expected_tier, result["scores"])
+                self.assertTrue(result["details"]["sla_checks"][expected_tier]["selectable"])
+
+    def test_strict_estimated_latency_is_provisional_and_does_not_hard_exclude(self):
+        from pathlib import Path
+        import json
+
+        metrics = json.loads(Path("examples/stage6_pareto_tradeoff_metrics_DEMO.json").read_text())
+        result = recommend(request(
+            latency_requirement_ms=8,
+            budget_monthly=20000,
+            privacy_requirement="low",
+            criticality="low"
+        ), metrics_by_tier=metrics)
+
+        self.assertIsNotNone(result["recommended_tier"])
+        self.assertEqual(result["details"]["status"], "provisional_sla_failure")
+        self.assertTrue(all(check["latency_status"] == "provisional_fail"
+                            for check in result["details"]["sla_checks"].values()))
+        self.assertTrue(all(item["eligible"] for item in result["details"]["feasibility"].values()))
+        self.assertTrue(any("estimated SLA overrun" in warning for warning in result["warnings"]))
 
     def test_reject_invalid_optional_fields(self):
         fields = [

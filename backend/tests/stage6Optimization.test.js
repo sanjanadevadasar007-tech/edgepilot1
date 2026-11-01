@@ -27,6 +27,8 @@ describe('Stage 6 optimization API integration', () => {
     expect(optimization.pareto.status).toBe('provisional_estimates');
     expect(optimization.pareto.non_dominated_tiers.length).toBeGreaterThan(0);
     expect(optimization.hybrid.status).toBe('candidate_requires_validation');
+    expect(optimization.hybrid.nodes).toHaveLength(4);
+    expect(optimization.hybrid.connections).toHaveLength(3);
     expect(optimization.cost_break_even.status).toBe('modeled');
 
     const crossing = optimization.cost_break_even.pairwise_break_even_points.find(

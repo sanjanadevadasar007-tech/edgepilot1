@@ -7,6 +7,7 @@ No raw end-user prompt or provider credential is returned to the frontend.
 from copy import deepcopy
 from .benchmarked import recommend_with_benchmarks
 from .config import TIERS, LABELS
+from .validation import validate
 
 QUESTIONS = ("why_recommended", "why_not_tier", "evidence_limitations", "what_would_change")
 
@@ -28,7 +29,7 @@ def _metric_phrase(tier, estimate):
     return f"{_show(tier)}: " + "; ".join(pieces) + "."
 
 
-def _reason(result, question, alternative_tier):
+def _reason(result, question, alternative_tier, workload):
     tier = result["recommended_tier"]
     details = result["details"]
     ranking = details["ranking"]
@@ -40,6 +41,34 @@ def _reason(result, question, alternative_tier):
             return "No deployment tier passed the confirmed hard constraints. Review the exclusions and requirements."
         answer = (f"{_show(tier)} ranks first with a provisional, uncalibrated suitability score of "
                   f"{scores[tier]:g}/100. " + _metric_phrase(tier, estimates[tier]))
+        if tier == "on_device" and workload["privacy_requirement"] == "high":
+            if workload["latency_requirement_ms"] <= 50:
+                answer += " High privacy and strict latency priorities favor local execution."
+            else:
+                answer += " The high privacy requirement favors keeping inference local."
+        if (tier == "cloud" and workload["privacy_requirement"] == "low"
+                and workload["latency_requirement_ms"] >= 150):
+            costs = [
+                values["monthly_cost_inr"]
+                for values in estimates.values()
+                if values["monthly_cost_inr"] is not None
+            ]
+            if costs and estimates[tier]["monthly_cost_inr"] == min(costs):
+                answer += " Lower relative cost, relaxed latency, and low privacy requirements favor scalable cloud processing."
+            else:
+                answer += " Relaxed latency and low privacy requirements favor scalable cloud processing."
+        checks = details.get("sla_checks", {}).get(tier, {})
+        provisional_failures = [
+            label for label, key in (("latency", "latency_status"), ("cost", "cost_status"))
+            if checks.get(key) == "provisional_fail"
+        ]
+        if provisional_failures:
+            metrics = " and ".join(provisional_failures)
+            verb = "exceed" if len(provisional_failures) > 1 else "exceeds"
+            answer += (
+                f" Estimated {metrics} {verb} the supplied limit; "
+                "treat this recommendation as provisional until verified."
+            )
         if len(ranking) > 1:
             second = ranking[1]
             answer += f" {_show(second)} ranks next ({scores[second]:g}/100)."
@@ -147,7 +176,7 @@ def explain_recommendation(payload, *, benchmark_catalog, metrics_by_tier=None,
     # Compute ONCE with the audited Stage 3 engine. Never delegate ranking to LLM.
     result = recommend_with_benchmarks(payload, benchmark_catalog=benchmark_catalog,
                                        metrics_by_tier=metrics_by_tier, llm=None)
-    deterministic_answer = _reason(result, question, alternative_tier)
+    deterministic_answer = _reason(result, question, alternative_tier, validate(payload))
     response_answer, source = deterministic_answer, "deterministic"
     if llm is not None:
         try:

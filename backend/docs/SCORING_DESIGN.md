@@ -6,7 +6,7 @@
 2. Accept optional per-tier external figures with a provenance flag (`measured`, `quoted`, `estimated`, or `demo`). Synthetic `demo` figures are NEVER used to calculate recommendations or expose estimates.
 3. Apply hard feasibility checks (policy, offline/remote restrictions, network outage, declared minimum bandwidth, device RAM, verified model incompatibility, measured missed latency deadline, quoted budget overruns).
 4. Compute 0–100 weighted suitability scores using transparent ordinal profiles; replace heuristic latency/cost factors where independently sourced inputs are available.
-5. Recommend only tiers with supplied latency and cost values that pass both limits, and that also pass hard feasibility checks. Select the highest score among those tiers (ties follow `on_device`, `far_edge`, `regional_edge`, `cloud`); return `null` if no tier passes both.
+5. Apply verified policy and SLA failures as hard exclusions. Estimated SLA misses remain provisional; among tiers with both metrics and no verified failure, select the highest suitability score. Return `null` when metrics are missing or every tier has a verified failure.
 6. Construct an architecture graph with connected device and selected inference tier.
 7. Generate a deterministic, grounded explanation, optionally polished by Qualcomm-hosted LLM without changing decisions or estimates.
 8. Return the agreed response plus optional `details` with score breakdown and exclusion reasons.
@@ -15,7 +15,7 @@
 
 `score_tier = sum(factor_score * importance_weight) / sum(importance_weights)`
 
-**Importance weights** depend on workload preferences. Strict latency, high privacy, large data-transfer demand, high criticality, and concurrent users each alter the relative contribution of the corresponding factor. Affordability importance increases from 3 to 5 when the supplied budget is below all known tier costs, so the ranking reflects budget pressure even when no tier can pass the hard recommendation gate. The `affordability` factor defaults to neutral 50/100 if no pricing is known. All profiles are documented demo priors rather than calibrated evidence.
+**Importance weights** depend on workload preferences. Strict latency, high privacy, criticality, bandwidth demand, and concurrent users alter the relative contribution of the corresponding factor. Bandwidth demand increases scalability importance; it does not increase data-locality importance. The data-locality profile is neutral across tiers until the workload contract includes a distinct locality requirement. Affordability combines budget fit with a relative cost score across supplied tier costs, so cost differences remain meaningful even when the budget is large. Unknown cost uses a neutral 50/100 prior. All profiles are documented demo priors rather than calibrated evidence.
 
 Factor scores and weight details are returned under `details.score_breakdown` so judges and teammates can audit each result. Scores are suitability indices, **not confidence probabilities**.
 
@@ -23,10 +23,10 @@ Factor scores and weight details are returned under `details.score_breakdown` so
 
 | Tier | Relative latency | Privacy | Data locality | Resilience | Scalability |
 |---|---:|---:|---:|---:|---:|
-| On-device | 96 | 97 | 95 | 80 | 35 |
-| Far edge | 86 | 72 | 78 | 75 | 66 |
-| Regional edge | 74 | 65 | 62 | 85 | 85 |
-| Cloud | 52 | 48 | 35 | 80 | 98 |
+| On-device | 96 | 97 | 60 | 45 | 35 |
+| Far edge | 86 | 72 | 60 | 65 | 66 |
+| Regional edge | 74 | 65 | 60 | 100 | 85 |
+| Cloud | 52 | 48 | 60 | 80 | 98 |
 
 These values are NOT physical milliseconds, security guarantees, or provider prices. Use credible environment-specific data to calibrate and validate before making real deployment decisions. Reliability is especially difficult to infer from tier placement alone; the resilience factor is a qualitative proxy, not a reliability SLA.
 
@@ -34,12 +34,12 @@ These values are NOT physical milliseconds, security guarantees, or provider pri
 
 - `measured`: latency from a comparable real end-to-end workload; latency greater than deadline is a hard failure. Inference-only measurement belongs in `inference_latency_ms` and does not trigger hard latency checks.
 - `quoted`: written infrastructure price quote; `monthly_cost_inr > budget_monthly` is a hard failure. A quoted latency value is a score input but not treated as a measured hard deadline.
-- `estimated`: values adjust scores and can satisfy the provisional latency/cost selection gate, but they do not prove a verified SLA. An estimated value over either limit prevents recommendation of that tier.
+- `estimated`: values adjust scores and support provisional comparison. Estimated misses are marked `provisional_fail`, do not hard-block a tier, and may still lead to a recommendation with a warning. A measured latency miss or measured/quoted cost over budget is a verified hard exclusion.
 - `demo`: ignored completely. Never surfaced as an operational prediction.
 
 ### Mandatory conditions and unverified conditions
 
-Hard feasibility checks exclude tiers for explicit policies, confirmed incompatibility, and verified constraint failures. Separately, a tier is rankable only when both its supplied latency and cost values are within the workload limits; missing values cannot pass either check. Estimated values may support a provisional selection, with provenance and verification gaps disclosed. If no tier passes both checks, the recommendation is `null`, even when a tier has the highest raw suitability score.
+`details.feasibility[tier].eligible` records whether hard policy/evidence excludes a tier. `details.sla_checks[tier].eligible` means both numeric values are within limits; `selectable` means both values are available and no verified failure exists. Estimated failures can therefore be selected provisionally but are clearly distinguished from verified failures. Unknown metrics remain unrankable; no latency or cost is invented.
 
 ## Limitations requiring future real-world verification
 

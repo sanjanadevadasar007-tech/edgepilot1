@@ -36,6 +36,36 @@ def _tier_estimates(workload, metrics):
     return out
 
 
+def _sla_status(value, source, limit, verified_sources):
+    if value is None:
+        return "unknown"
+    if value <= limit:
+        return "pass" if source in verified_sources else "provisional_pass"
+    if source in verified_sources:
+        return "fail"
+    return "provisional_fail"
+
+
+def _decision_context(tier, workload, estimate, sla_check, metrics):
+    if tier == "on_device" and workload["privacy_requirement"] == "high":
+        if workload["latency_requirement_ms"] <= 50:
+            return " High privacy and strict latency priorities favor local execution."
+        return " The high privacy requirement favors keeping inference local."
+    if tier == "cloud" and workload["privacy_requirement"] == "low" and workload["latency_requirement_ms"] >= 150:
+        context = " Low privacy and relaxed latency requirements make scalable cloud processing suitable."
+        known_costs = [
+            record["monthly_cost_inr"]
+            for record in metrics.values()
+            if record.get("monthly_cost_inr") is not None
+        ]
+        if known_costs and estimate["monthly_cost_inr"] == min(known_costs):
+            context += " Its supplied monthly cost estimate is the lowest among the evaluated tiers."
+        if sla_check["cost_status"] == "provisional_fail":
+            context += " That estimate exceeds the budget, so the selection remains provisional."
+        return context
+    return ""
+
+
 def recommend(payload, *, metrics_by_tier=None, llm=None):
     workload = validate(payload)
     metrics = normalize_metrics(metrics_by_tier)
@@ -43,20 +73,37 @@ def recommend(payload, *, metrics_by_tier=None, llm=None):
     gaps = evidence_gaps(workload, metrics)
     scores, breakdown, status = calculate(workload, metrics, blocked)
     tier_estimates = _tier_estimates(workload, metrics)
-    sla_checks = {
-        tier: {
-            "latency_pass": tier_estimates[tier]["latency_target_met"] is True,
-            "cost_pass": tier_estimates[tier]["budget_met"] is True,
+    sla_checks = {}
+    for tier in TIERS:
+        estimate = tier_estimates[tier]
+        latency_status = _sla_status(
+            estimate["latency_ms"], estimate["latency_source"],
+            workload["latency_requirement_ms"], ("measured",)
+        )
+        cost_status = _sla_status(
+            estimate["monthly_cost_inr"], estimate["cost_source"],
+            workload["budget_monthly"], ("measured", "quoted")
+        )
+        sla_checks[tier] = {
+            "latency_pass": estimate["latency_target_met"] is True,
+            "cost_pass": estimate["budget_met"] is True,
+            "latency_status": latency_status,
+            "cost_status": cost_status,
             "eligible": (
-                tier_estimates[tier]["latency_target_met"] is True
-                and tier_estimates[tier]["budget_met"] is True
+                estimate["latency_target_met"] is True
+                and estimate["budget_met"] is True
+            ),
+            "selectable": (
+                not bool(blocked[tier])
+                and estimate["latency_ms"] is not None
+                and estimate["monthly_cost_inr"] is not None
+                and latency_status != "fail"
+                and cost_status != "fail"
             )
         }
-        for tier in TIERS
-    }
     candidates = [
         tier for tier in TIERS
-        if status[tier] == "eligible" and sla_checks[tier]["eligible"]
+        if status[tier] == "eligible" and sla_checks[tier]["selectable"]
     ]
     ranked = sorted(candidates, key=lambda tier: (-scores[tier], TIERS.index(tier)))
     winner = ranked[0] if ranked else None
@@ -71,7 +118,7 @@ def recommend(payload, *, metrics_by_tier=None, llm=None):
     warnings = ["DEMO HEURISTICS: scores are uncalibrated suitability indices, not probabilities or measured deployment rankings."]
     if not ranked:
         warnings.append(
-            "No tier has both a supplied latency estimate within target and a supplied monthly cost within budget."
+            "No tier has both latency and cost evidence without a verified SLA violation; unknown metrics cannot be ranked as passing."
         )
     if any(blocked[t] for t in TIERS):
         warnings.append("One or more deployment tiers failed hard feasibility checks; see feasibility details.")
@@ -89,6 +136,13 @@ def recommend(payload, *, metrics_by_tier=None, llm=None):
         warnings.append("Some tier costs are unknown; their affordability uses a neutral scoring placeholder, not a verified cost estimate.")
     if winner and gaps[winner]:
         warnings.append("Recommended tier is not fully verified; see details.evidence_gaps for missing checks.")
+    if winner and any(
+        sla_checks[winner][key] == "provisional_fail"
+        for key in ("latency_status", "cost_status")
+    ):
+        warnings.append(
+            "The selected tier has an estimated SLA overrun; this is a provisional warning, not a verified hard exclusion."
+        )
     assumptions = [
         "'bandwidth_requirement' means data-transfer demand (low/medium/high), not measured network speed.",
         "Tier profiles are illustrative ordinal assumptions, not Qualcomm hardware benchmark results.",
@@ -102,6 +156,22 @@ def recommend(payload, *, metrics_by_tier=None, llm=None):
         assumptions.append(f"Selected tier metric provenance: latency={field_source(metric, 'latency_ms') or 'unknown'}, "
                            f"cost={field_source(metric, 'monthly_cost_inr') or 'unknown'}.")
     deterministic = default_explanation(winner, scores, blocked, workload)
+    if winner:
+        deterministic += _decision_context(
+            winner, workload, tier_estimates[winner], sla_checks[winner], metrics
+        )
+    if winner and any(
+        sla_checks[winner][key] == "provisional_fail"
+        for key in ("latency_status", "cost_status")
+    ):
+        failed_estimates = [
+            label for label, key in (("latency", "latency_status"), ("cost", "cost_status"))
+            if sla_checks[winner][key] == "provisional_fail"
+        ]
+        deterministic += (
+            f" Estimated {' and '.join(failed_estimates)} exceeds the supplied limit; "
+            "treat this as provisional until verified."
+        )
     explanation = deterministic
     explanation_source = "deterministic"
     if llm is not None:
@@ -126,7 +196,14 @@ def recommend(payload, *, metrics_by_tier=None, llm=None):
         "assumptions": assumptions,
         "architecture": build(winner),
         "details": {
-            "status": "provisional" if winner else "no_feasible_tier",
+            "status": (
+                "provisional_sla_failure"
+                if winner and any(
+                    sla_checks[winner][key] == "provisional_fail"
+                    for key in ("latency_status", "cost_status")
+                )
+                else "provisional" if winner else "no_feasible_tier"
+            ),
             "ranking": ranked,
             "feasibility": {tier: {"eligible": not bool(blocked[tier]),
                                    "reasons": blocked[tier],
@@ -134,13 +211,13 @@ def recommend(payload, *, metrics_by_tier=None, llm=None):
                             for tier in TIERS},
             "evidence_gaps": gaps,
             "score_breakdown": breakdown,
-            "weights": weights(workload, metrics),
+            "weights": weights(workload),
             "decision_drivers": decision_drivers(winner, runner_up, breakdown),
             "metric_sources": {tier: record["source"] for tier, record in metrics.items()},
             "metric_provenance": {tier: record["field_evidence"] for tier, record in metrics.items()},
             "tier_estimates": tier_estimates,
             "sla_checks": sla_checks,
             "explanation_source": explanation_source,
-            "method": "transparent_weighted_heuristic_v2",
+            "method": "transparent_weighted_heuristic_v3",
         },
     }

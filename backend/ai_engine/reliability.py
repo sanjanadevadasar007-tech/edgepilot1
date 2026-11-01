@@ -56,6 +56,14 @@ def _number(value, low=0.0, high=None):
             and isfinite(value) and value >= low and (high is None or value <= high))
 
 
+def _expected_sla_status(value, source, met, verified_sources):
+    if value is None:
+        return "unknown"
+    if met:
+        return "pass" if source in verified_sources else "provisional_pass"
+    return "fail" if source in verified_sources else "provisional_fail"
+
+
 def _architecture_issues(arch, prefix):
     if not isinstance(arch, dict):
         return [f"{prefix}: architecture must be an object"]
@@ -104,7 +112,6 @@ def audit_recommendation(payload, result):
     if not isinstance(ranks, list) or any(t not in TIERS for t in ranks) or len(set(ranks)) != len(ranks):
         errors.append("Ranking must list unique recognized tiers")
         ranks = []
-    eligible = []
     recommendable = []
     if len(feas) == len(TIERS):
         for tier in TIERS:
@@ -116,36 +123,67 @@ def audit_recommendation(payload, result):
                 errors.append(f"{tier} marked eligible despite exclusion reasons")
             if not f["eligible"] and not f["reasons"]:
                 errors.append(f"{tier} marked excluded without reasons")
-            if f["eligible"]:
-                eligible.append(tier)
-            elif scores.get(tier) != 0:
+            if not f["eligible"] and scores.get(tier) != 0:
                 errors.append(f"Excluded tier {tier} must have zero selectable score")
         sla_checks = details.get("sla_checks")
         if not isinstance(sla_checks, dict) or set(sla_checks) != set(TIERS):
-            errors.append("Latency and budget checks must cover all four tiers")
+            errors.append("Latency and budget status checks must cover all four tiers")
             sla_checks = {}
-        for tier in eligible:
+        estimates = details.get("tier_estimates", {})
+        for tier in TIERS:
             checks = sla_checks.get(tier, {})
-            if not isinstance(checks, dict) or type(checks.get("latency_pass")) is not bool or type(checks.get("cost_pass")) is not bool:
+            if (
+                not isinstance(checks, dict)
+                or type(checks.get("latency_pass")) is not bool
+                or type(checks.get("cost_pass")) is not bool
+                or type(checks.get("eligible")) is not bool
+                or type(checks.get("selectable")) is not bool
+                or checks.get("latency_status") not in ("pass", "provisional_pass", "provisional_fail", "fail", "unknown")
+                or checks.get("cost_status") not in ("pass", "provisional_pass", "provisional_fail", "fail", "unknown")
+            ):
                 errors.append(f"Malformed latency and budget checks for {tier}")
                 continue
-            expected_eligible = checks["latency_pass"] and checks["cost_pass"]
+            metric = estimates.get(tier, {}) if isinstance(estimates, dict) else {}
+            expected_latency_pass = metric.get("latency_target_met") is True
+            expected_cost_pass = metric.get("budget_met") is True
+            expected_eligible = expected_latency_pass and expected_cost_pass
+            expected_latency_status = _expected_sla_status(
+                metric.get("latency_ms"), metric.get("latency_source"),
+                expected_latency_pass, ("measured",)
+            )
+            expected_cost_status = _expected_sla_status(
+                metric.get("monthly_cost_inr"), metric.get("cost_source"),
+                expected_cost_pass, ("measured", "quoted")
+            )
             if checks.get("eligible") is not expected_eligible:
                 errors.append(f"Combined SLA eligibility is inconsistent for {tier}")
-            if expected_eligible:
+            if checks["latency_pass"] is not expected_latency_pass or checks["cost_pass"] is not expected_cost_pass:
+                errors.append(f"Numeric SLA results are inconsistent for {tier}")
+            if checks["latency_status"] != expected_latency_status or checks["cost_status"] != expected_cost_status:
+                errors.append(f"SLA verification status is inconsistent with metric provenance for {tier}")
+            expected_selectable = (
+                feas[tier].get("eligible", False)
+                and metric.get("latency_ms") is not None
+                and metric.get("monthly_cost_inr") is not None
+                and checks["latency_status"] != "fail"
+                and checks["cost_status"] != "fail"
+            )
+            if checks.get("selectable") is not expected_selectable:
+                errors.append(f"Selectable status is inconsistent with feasibility and evidence for {tier}")
+            if expected_selectable:
                 recommendable.append(tier)
         if set(ranks) != set(recommendable):
-            errors.append("Ranking and tiers passing both SLAs disagree")
+            errors.append("Ranking and tiers without verified SLA violations disagree")
         if len(scores) == len(TIERS) and all(_number(v, 0, 100) for v in scores.values()):
             expected = sorted(recommendable, key=lambda t: (-scores[t], TIERS.index(t)))
             if ranks != expected:
-                errors.append("Ranking is not sorted by suitability among tiers passing both SLAs")
+                errors.append("Ranking is not sorted by suitability among selectable tiers")
             if result.get("recommended_tier") != (expected[0] if expected else None):
-                errors.append("Recommended tier is not the highest-ranked tier passing both SLAs")
+                errors.append("Recommended tier is not the highest-ranked selectable tier")
     if result.get("recommended_tier") not in (None, *TIERS):
         errors.append("Unrecognized recommended tier")
     if result.get("recommended_tier") is None and recommendable:
-        errors.append("No winner despite tiers passing both SLAs")
+        errors.append("No winner despite selectable tiers")
 
     estimates = result.get("estimates")
     tiers = details.get("tier_estimates", {})

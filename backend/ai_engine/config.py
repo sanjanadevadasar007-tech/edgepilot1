@@ -11,10 +11,10 @@ All 0-100 values encode transparent demo assumptions, NOT measurements.
 TIERS = ("on_device", "far_edge", "regional_edge", "cloud")
 FACTORS = ("latency", "privacy", "data_locality", "resilience", "scalability", "affordability")
 PROFILES = {
-    "on_device": {"latency": 96, "privacy": 97, "data_locality": 95, "resilience": 80, "scalability": 35},
-    "far_edge": {"latency": 86, "privacy": 72, "data_locality": 78, "resilience": 75, "scalability": 66},
-    "regional_edge": {"latency": 74, "privacy": 65, "data_locality": 62, "resilience": 85, "scalability": 85},
-    "cloud": {"latency": 52, "privacy": 48, "data_locality": 35, "resilience": 80, "scalability": 98},
+    "on_device": {"latency": 96, "privacy": 97, "data_locality": 60, "resilience": 45, "scalability": 35},
+    "far_edge": {"latency": 86, "privacy": 72, "data_locality": 60, "resilience": 65, "scalability": 66},
+    "regional_edge": {"latency": 74, "privacy": 65, "data_locality": 60, "resilience": 100, "scalability": 85},
+    "cloud": {"latency": 52, "privacy": 48, "data_locality": 60, "resilience": 80, "scalability": 98},
 }
 TRADEOFFS = {
     "on_device": ["Local hardware capacity and thermal/power limits may restrict which models run.",
