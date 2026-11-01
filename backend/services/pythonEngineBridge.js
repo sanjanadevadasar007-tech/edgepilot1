@@ -2,7 +2,8 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const PYTHON_PATH = process.env.PYTHON_PATH || 'C:\\Users\\Bhavyashree\\AppData\\Local\\Programs\\Python\\Python313\\python.exe';
+const DEFAULT_PYTHON_PATH = process.platform === 'win32' ? 'python' : 'python3';
+const PYTHON_PATH = process.env.PYTHON_PATH || DEFAULT_PYTHON_PATH;
 
 const possiblePaths = [
   path.join(__dirname, '..', 'ai_engine', 'bridge_runner.py'),

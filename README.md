@@ -122,6 +122,27 @@ npm run build
 npm run preview
 ```
 
+## Production deployment
+
+The frontend is configured for Vercel, with server-side API functions forwarding
+the supported `/api` endpoints to a separately hosted backend. The Express
+backend and Python decision engine can be provisioned from the Render Blueprint
+in `render.yaml`.
+
+1. Import this repository into Vercel using the repository root as the project
+   root.
+2. Deploy the Render Blueprint. Render generates the private `API_AUTH_TOKEN`;
+   copy its value from the backend service's environment settings.
+3. Add `API_BACKEND_URL` (the backend origin, without `/api`) and
+   `API_AUTH_TOKEN` as server-side environment variables in Vercel. Do not use
+   the `VITE_` prefix for either variable.
+4. Redeploy Vercel, check `/api/health`, then try a recommendation in the
+   Analyzer.
+
+The API token is held by the Vercel server-side proxy and is never exposed to
+the browser. The backend does not need browser CORS access because the frontend
+uses same-origin `/api` paths.
+
 ## Backend API contract
 
 API calls are centralized in `src/services/api.js` and use the relative API
