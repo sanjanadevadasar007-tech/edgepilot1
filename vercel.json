@@ -6,8 +6,18 @@
       "framework": "vite",
       "buildCommand": "npm run build",
       "outputDirectory": "dist",
+      "rewrites": [
+        {
+          "source": "/(.*)",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    "api": {
+      "root": "api-proxy",
+      "framework": "express",
       "functions": {
-        "api/[...path].js": {
+        "index.js": {
           "maxDuration": 60
         }
       },
@@ -17,12 +27,6 @@
           "service": "backend",
           "format": "url",
           "env": "BACKEND_URL"
-        }
-      ],
-      "rewrites": [
-        {
-          "source": "/(.*)",
-          "destination": "/index.html"
         }
       ]
     },
@@ -36,7 +40,7 @@
     {
       "source": "/api/(.*)",
       "destination": {
-        "service": "app"
+        "service": "api"
       }
     },
     {

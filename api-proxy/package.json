@@ -1,0 +1,9 @@
+{
+  "name": "edgepilot-api-proxy",
+  "private": true,
+  "version": "1.0.0",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.3.0"
+  }
+}

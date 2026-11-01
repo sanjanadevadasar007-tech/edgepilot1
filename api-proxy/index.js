@@ -1,3 +1,6 @@
+const express = require('express');
+
+const app = express();
 const ROUTES = new Map([
   ['/api/health', 'GET'],
   ['/api/recommend', 'POST'],
@@ -5,8 +8,10 @@ const ROUTES = new Map([
   ['/api/report', 'POST'],
 ]);
 
-export default async function handler(req, res) {
-  const requestUrl = new URL(req.url, 'http://localhost');
+app.use(express.json({ limit: '24kb' }));
+
+app.use(async (req, res) => {
+  const requestUrl = new URL(req.originalUrl, 'http://localhost');
   const allowedMethod = ROUTES.get(requestUrl.pathname);
 
   if (!allowedMethod) {
@@ -29,8 +34,7 @@ export default async function handler(req, res) {
   let destination;
   try {
     destination = new URL(
-      `${requestUrl.pathname}${requestUrl.search}`,
-      `${backendUrl.replace(/\/+$/, '')}/`,
+      `${backendUrl.replace(/\/+$/, '')}${requestUrl.pathname}${requestUrl.search}`,
     );
     if (!['http:', 'https:'].includes(destination.protocol)) {
       throw new Error('Backend URL must use HTTP or HTTPS.');
@@ -42,17 +46,15 @@ export default async function handler(req, res) {
 
   const headers = {
     authorization: `Bearer ${apiAuthToken}`,
-    accept: req.headers.accept || '*/*',
+    accept: req.get('accept') || '*/*',
   };
   let body;
   if (allowedMethod === 'POST') {
     if (req.body === undefined) {
       return res.status(400).json({ error: 'Request body is required.' });
     }
-    body = Buffer.isBuffer(req.body) || typeof req.body === 'string'
-      ? req.body
-      : JSON.stringify(req.body);
-    headers['content-type'] = req.headers['content-type'] || 'application/json';
+    body = JSON.stringify(req.body);
+    headers['content-type'] = req.get('content-type') || 'application/json';
   }
 
   try {
@@ -72,4 +74,6 @@ export default async function handler(req, res) {
     console.error('Backend API proxy request failed', error);
     return res.status(502).json({ error: 'Unable to reach the backend service.' });
   }
-}
+});
+
+module.exports = app;
