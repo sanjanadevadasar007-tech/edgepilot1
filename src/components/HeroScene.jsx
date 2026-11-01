@@ -16,21 +16,24 @@ const TIERS = [
   {
     name: 'On-device',
     caption: 'Private · immediate',
-    detail: 'Execution stays closest to the data source.',
+    detail: 'Closest to the data, with private, immediate execution.',
+    context: 'Local execution avoids a network hop and keeps data close to its source.',
     color: '#72dfc1',
     place: 'device',
   },
   {
     name: 'Far Edge',
     caption: 'Nearby · resilient',
-    detail: 'A nearby layer for responsive, distributed workloads.',
+    detail: 'A nearby layer for low-latency, distributed workloads.',
+    context: 'Nearby compute trades some locality for distributed capacity.',
     color: '#81cff7',
     place: 'far',
   },
   {
     name: 'Regional Edge',
     caption: 'Balanced · selected',
-    detail: 'A balance of latency, scale, and control.',
+    detail: 'A regional fabric balancing latency, data locality, and scale.',
+    context: 'Balances local responsiveness with broader shared capacity.',
     color: '#b397ff',
     place: 'regional',
   },
@@ -38,6 +41,7 @@ const TIERS = [
     name: 'Cloud',
     caption: 'Elastic · centralized',
     detail: 'Central capacity with room to scale.',
+    context: 'More distance can bring elastic, centralized capacity.',
     color: '#a9a2f7',
     place: 'cloud',
   },
@@ -50,7 +54,7 @@ const PARTICLE_GEOMETRY = new SphereGeometry(0.034, 10, 10);
 
 function useSceneLayout() {
   const width = useThree((state) => state.viewport.width);
-  const x = Math.min(3.25, width * 0.34);
+  const x = Math.min(3.25, width * (width < 7 ? 0.34 : 0.25));
   const y = Math.min(1.72, width * 0.18);
 
   return useMemo(
@@ -347,7 +351,7 @@ function SceneContents({ selectedTier, onSelect, reducedMotion }) {
 }
 
 export default function HeroScene() {
-  const [selectedTier, setSelectedTier] = useState('Regional Edge');
+  const [selectedTier, setSelectedTier] = useState('On-device');
   const [reducedMotion, setReducedMotion] = useState(
     () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
   );
@@ -373,48 +377,50 @@ export default function HeroScene() {
   }, []);
 
   return (
-    <section className="hero-scene" ref={section} aria-label="Interactive deployment environment">
-      <div className="scene-vignette" aria-hidden="true" />
-      <Canvas
-        className="deployment-canvas"
-        camera={{ position: [0, 0, 10], fov: 43 }}
-        dpr={[1, 1.5]}
-        frameloop={reducedMotion || !inView ? 'demand' : 'always'}
-        gl={{ alpha: true, antialias: true, powerPreference: 'low-power' }}
-      >
-        <Suspense fallback={null}>
-          <SceneContents
-            selectedTier={selectedTier}
-            onSelect={setSelectedTier}
-            reducedMotion={reducedMotion || !inView}
-          />
-        </Suspense>
-      </Canvas>
-      <div className="scene-label-layer" role="group" aria-label="Select a deployment tier">
-        <span className="scene-core-label">AI / WORKLOAD</span>
-        {TIERS.map((tier) => (
-          <button
-            className={`scene-tier-label scene-tier-${tier.place} ${selectedTier === tier.name ? 'is-selected' : ''}`}
-            key={tier.name}
-            type="button"
-            style={{ '--tier-color': tier.color }}
-            aria-pressed={selectedTier === tier.name}
-            onFocus={() => setSelectedTier(tier.name)}
-            onPointerEnter={() => setSelectedTier(tier.name)}
-            onClick={() => setSelectedTier(tier.name)}
-          >
-            <strong>{tier.name}</strong>
-            <span>{tier.caption}</span>
-          </button>
-        ))}
-      </div>
+    <div className="hero-scene-wrap">
+      <section className="hero-scene" ref={section} aria-label="Interactive deployment environment">
+        <div className="scene-vignette" aria-hidden="true" />
+        <Canvas
+          className="deployment-canvas"
+          camera={{ position: [0, 0, 10], fov: 39 }}
+          dpr={[1, 1.5]}
+          frameloop={reducedMotion || !inView ? 'demand' : 'always'}
+          gl={{ alpha: true, antialias: true, powerPreference: 'low-power' }}
+        >
+          <Suspense fallback={null}>
+            <SceneContents
+              selectedTier={selectedTier}
+              onSelect={setSelectedTier}
+              reducedMotion={reducedMotion || !inView}
+            />
+          </Suspense>
+        </Canvas>
+        <div className="scene-label-layer" role="group" aria-label="Select a deployment tier">
+          <span className="scene-core-label">AI / WORKLOAD</span>
+          {TIERS.map((tier) => (
+            <button
+              className={`scene-tier-label scene-tier-${tier.place} ${selectedTier === tier.name ? 'is-selected' : ''}`}
+              key={tier.name}
+              type="button"
+              style={{ '--tier-color': tier.color }}
+              aria-pressed={selectedTier === tier.name}
+              onFocus={() => setSelectedTier(tier.name)}
+              onPointerEnter={() => setSelectedTier(tier.name)}
+              onClick={() => setSelectedTier(tier.name)}
+            >
+              <strong>{tier.name}</strong>
+              <span>{tier.caption}</span>
+            </button>
+          ))}
+        </div>
+        <span className="scene-coordinate scene-coordinate-a" aria-hidden="true">EDGE / 04</span>
+      </section>
       <div className="scene-readout" aria-live="polite">
         <span className="scene-readout-kicker">PLACEMENT SIGNAL / ILLUSTRATIVE</span>
         <strong style={{ '--tier-color': activeTier.color }}>{activeTier.name}</strong>
         <p>{activeTier.detail}</p>
-        <small>Sample visualization — not live scoring or a benchmark.</small>
+        <small>{activeTier.context}</small>
       </div>
-      <span className="scene-coordinate scene-coordinate-a" aria-hidden="true">EDGE / 04</span>
-    </section>
+    </div>
   );
 }

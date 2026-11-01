@@ -143,17 +143,33 @@ function Header({ path, setPath, mockMode, setMockMode, health }) {
 }
 
 const DEPLOYMENT_ROUTES = {
-  'On-device': 'M390 245 C260 210 170 160 120 140',
-  'Far edge': 'M390 245 C275 290 220 360 155 350',
-  'Regional edge': 'M390 245 C485 285 560 345 645 340',
-  Cloud: 'M390 245 C530 200 640 150 710 130',
+  'On-device': 'M400 216 C330 192 275 130 220 90',
+  'Far edge': 'M400 216 C325 244 275 290 220 284',
+  'Regional edge': 'M400 216 C475 244 525 290 580 284',
+  Cloud: 'M400 216 C470 192 525 130 580 90',
 };
 
 const DEPLOYMENT_DETAILS = {
-  'On-device': ['Private execution', 'Illustrative route closest to the data source.'],
-  'Far edge': ['Nearby execution', 'Illustrative route through a nearby edge layer.'],
-  'Regional edge': ['Balanced placement', 'Balanced latency, scale, and control.'],
-  Cloud: ['Centralized execution', 'Illustrative route toward elastic central capacity.'],
+  'On-device': [
+    'Private execution',
+    'Closest to the data, with private, immediate execution.',
+    'Local execution avoids a network hop and keeps data close to its source.',
+  ],
+  'Far edge': [
+    'Nearby execution',
+    'A nearby layer for low-latency, distributed workloads.',
+    'Nearby compute trades some locality for distributed capacity.',
+  ],
+  'Regional edge': [
+    'Balanced placement',
+    'A regional fabric balancing latency, data locality, and scale.',
+    'Balances local responsiveness with broader shared capacity.',
+  ],
+  Cloud: [
+    'Centralized execution',
+    'Centralized capacity with room to scale.',
+    'More distance can bring elastic, centralized capacity.',
+  ],
 };
 
 function updatePointerLight(event) {
@@ -171,102 +187,114 @@ function updatePointerLight(event) {
 function DeploymentMapFallback() {
   const [selectedTier, setSelectedTier] = useState('Regional edge');
   const activePath = DEPLOYMENT_ROUTES[selectedTier];
-  const [detailTitle, detailCopy] = DEPLOYMENT_DETAILS[selectedTier];
+  const [detailTitle, detailCopy, detailContext] = DEPLOYMENT_DETAILS[selectedTier];
   const tierClass = selectedTier.toLowerCase().replaceAll(' ', '-');
 
   return (
-    <section
-      className={`deployment-map tier-${tierClass}`}
-      aria-label="Illustrative workload deployment map"
-      onPointerMove={updatePointerLight}
-    >
-      <div className="map-grid" aria-hidden="true" />
-      <div className="map-technical-labels" aria-hidden="true">
-        <span className="map-label-latency">LATENCY</span>
-        <span className="map-label-compute">COMPUTE SIGNAL / 04</span>
-        <span className="map-label-routing">MODEL ROUTING</span>
-        <span className="map-label-locality">DATA LOCALITY</span>
-        <span className="map-label-inference">INFERENCE</span>
-      </div>
-      <svg
-        className="map-paths"
-        viewBox="0 0 800 440"
-        preserveAspectRatio="none"
-        aria-hidden="true"
+    <div className="deployment-map-wrap">
+      <section
+        className={`deployment-map tier-${tierClass}`}
+        aria-label="Illustrative workload deployment map"
+        onPointerMove={updatePointerLight}
       >
-        <path className="route-muted" d="M390 245 C260 210 170 160 120 140" />
-        <path className="route-muted" d="M390 245 C275 290 220 360 155 350" />
-        <path className="route-muted" d="M390 245 C530 200 640 150 710 130" />
-        <path className={`route-selected route-${tierClass}`} d={activePath} />
-        <circle className="signal-dot" r="4">
-          <animateMotion dur="5s" repeatCount="indefinite" path={activePath} />
-        </circle>
-        <circle className="signal-dot signal-dot-secondary" r="2.5">
-          <animateMotion dur="7s" begin="-2.4s" repeatCount="indefinite" path={activePath} />
-        </circle>
-        <circle className="signal-dot signal-dot-secondary" r="2">
-          <animateMotion dur="9s" begin="-5.8s" repeatCount="indefinite" path={activePath} />
-        </circle>
-      </svg>
-      <button
-        className={`map-node node-device ${selectedTier === 'On-device' ? 'is-active' : ''}`}
-        type="button"
-        aria-pressed={selectedTier === 'On-device'}
-        onMouseEnter={() => setSelectedTier('On-device')}
-        onFocus={() => setSelectedTier('On-device')}
-        onClick={() => setSelectedTier('On-device')}
-      >
-        <span aria-hidden="true">▣</span>
-        <strong>ON-DEVICE</strong>
-        <small>private / immediate</small>
-      </button>
-      <button
-        className={`map-node node-far ${selectedTier === 'Far edge' ? 'is-active' : ''}`}
-        type="button"
-        aria-pressed={selectedTier === 'Far edge'}
-        onMouseEnter={() => setSelectedTier('Far edge')}
-        onFocus={() => setSelectedTier('Far edge')}
-        onClick={() => setSelectedTier('Far edge')}
-      >
-        <span aria-hidden="true">⌁</span>
-        <strong>FAR EDGE</strong>
-        <small>nearby / resilient</small>
-      </button>
-      <button
-        className={`map-node node-regional ${selectedTier === 'Regional edge' ? 'is-active' : ''}`}
-        type="button"
-        aria-pressed={selectedTier === 'Regional edge'}
-        onMouseEnter={() => setSelectedTier('Regional edge')}
-        onFocus={() => setSelectedTier('Regional edge')}
-        onClick={() => setSelectedTier('Regional edge')}
-      >
-        <span aria-hidden="true">⌘</span>
-        <strong>REGIONAL EDGE</strong>
-        <small>balanced / selected</small>
-      </button>
-      <button
-        className={`map-node node-cloud ${selectedTier === 'Cloud' ? 'is-active' : ''}`}
-        type="button"
-        aria-pressed={selectedTier === 'Cloud'}
-        onMouseEnter={() => setSelectedTier('Cloud')}
-        onFocus={() => setSelectedTier('Cloud')}
-        onClick={() => setSelectedTier('Cloud')}
-      >
-        <span aria-hidden="true">▤</span>
-        <strong>CLOUD</strong>
-        <small>elastic / centralized</small>
-      </button>
-      <div className="workload-node">
-        <strong>AI</strong>
-        <span>WORKLOAD</span>
-      </div>
+        <div className="map-grid" aria-hidden="true" />
+        <div className="map-technical-labels" aria-hidden="true">
+          <span className="map-label-latency">LATENCY</span>
+          <span className="map-label-compute">COMPUTE SIGNAL / 04</span>
+          <span className="map-label-routing">MODEL ROUTING</span>
+          <span className="map-label-locality">DATA LOCALITY</span>
+          <span className="map-label-inference">INFERENCE</span>
+        </div>
+        <svg
+          className="map-paths"
+          viewBox="0 0 800 440"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <path className="route-muted" d={DEPLOYMENT_ROUTES['On-device']} />
+          <path className="route-muted" d={DEPLOYMENT_ROUTES['Far edge']} />
+          <path className="route-muted" d={DEPLOYMENT_ROUTES['Regional edge']} />
+          <path className="route-muted" d={DEPLOYMENT_ROUTES.Cloud} />
+          <path className={`route-selected route-${tierClass}`} d={activePath} />
+          <circle className="signal-dot" r="4">
+            <animateMotion dur="5s" repeatCount="indefinite" path={activePath} />
+          </circle>
+          <circle className="signal-dot signal-dot-secondary" r="2.5">
+            <animateMotion dur="7s" begin="-2.4s" repeatCount="indefinite" path={activePath} />
+          </circle>
+          <circle className="signal-dot signal-dot-secondary" r="2">
+            <animateMotion dur="9s" begin="-5.8s" repeatCount="indefinite" path={activePath} />
+          </circle>
+        </svg>
+        <button
+          className={`map-node node-device ${selectedTier === 'On-device' ? 'is-active' : ''}`}
+          type="button"
+          aria-pressed={selectedTier === 'On-device'}
+          onMouseEnter={() => setSelectedTier('On-device')}
+          onFocus={() => setSelectedTier('On-device')}
+          onClick={() => setSelectedTier('On-device')}
+        >
+          <span aria-hidden="true">▣</span>
+          <strong>ON-DEVICE</strong>
+          <small>private / immediate</small>
+        </button>
+        <button
+          className={`map-node node-far ${selectedTier === 'Far edge' ? 'is-active' : ''}`}
+          type="button"
+          aria-pressed={selectedTier === 'Far edge'}
+          onMouseEnter={() => setSelectedTier('Far edge')}
+          onFocus={() => setSelectedTier('Far edge')}
+          onClick={() => setSelectedTier('Far edge')}
+        >
+          <span aria-hidden="true">⌁</span>
+          <strong>FAR EDGE</strong>
+          <small>nearby / resilient</small>
+        </button>
+        <button
+          className={`map-node node-regional ${selectedTier === 'Regional edge' ? 'is-active' : ''}`}
+          type="button"
+          aria-pressed={selectedTier === 'Regional edge'}
+          onMouseEnter={() => setSelectedTier('Regional edge')}
+          onFocus={() => setSelectedTier('Regional edge')}
+          onClick={() => setSelectedTier('Regional edge')}
+        >
+          <span aria-hidden="true">⌘</span>
+          <strong>REGIONAL EDGE</strong>
+          <small>balanced / selected</small>
+        </button>
+        <button
+          className={`map-node node-cloud ${selectedTier === 'Cloud' ? 'is-active' : ''}`}
+          type="button"
+          aria-pressed={selectedTier === 'Cloud'}
+          onMouseEnter={() => setSelectedTier('Cloud')}
+          onFocus={() => setSelectedTier('Cloud')}
+          onClick={() => setSelectedTier('Cloud')}
+        >
+          <span aria-hidden="true">▤</span>
+          <strong>CLOUD</strong>
+          <small>elastic / centralized</small>
+        </button>
+        <div className="workload-node">
+          <span className="workload-aura" aria-hidden="true" />
+          <svg
+            className="workload-wireframe"
+            viewBox="0 0 100 100"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M50 4 77 17 94 43 84 73 58 94 27 86 7 61 12 30 32 10Z M50 4 58 94 M77 17 27 86 M94 43 7 61 M84 73 12 30 M32 10 84 73 M50 4 7 61 M77 17 58 94 M94 43 27 86 M12 30 58 94 M32 10 94 43 M7 61 84 73 M27 86 77 17" />
+          </svg>
+          <strong>AI</strong>
+          <span>WORKLOAD</span>
+        </div>
+      </section>
       <div className="map-caption" aria-live="polite">
         <span>Illustrative sample signal · {detailTitle}</span>
         <strong>{selectedTier}</strong>
         <p>{detailCopy}</p>
-        <small>Sample visualization — not live scoring or a benchmark.</small>
-        </div>
-    </section>
+        <small>{detailContext}</small>
+      </div>
+    </div>
   );
 }
 
@@ -299,122 +327,38 @@ function DeploymentMap() {
   );
 }
 
-const LANDSCAPE_TIERS = [
-  {
-    name: 'On-device',
-    distance: 'closest',
-    title: 'On-device',
-    description: 'Keep execution closest to the data and the device.',
-  },
-  {
-    name: 'Far Edge',
-    distance: 'nearby',
-    title: 'Far Edge',
-    description: 'A nearby layer for resilient, distributed workloads.',
-  },
-  {
-    name: 'Regional Edge',
-    distance: 'balanced',
-    title: 'Regional Edge',
-    description: 'A balanced fabric for latency and scale.',
-  },
-  {
-    name: 'Cloud',
-    distance: 'elastic',
-    title: 'Cloud',
-    description: 'Centralized capacity with room to scale.',
-  },
-];
-
 const DECISION_SIGNALS = [
   {
     name: 'LATENCY',
     detail: 'response time',
     explanation: 'Tighter response targets pull the route toward nearby execution.',
+    followUp: 'Shorter network paths can help meet a strict response-time target.',
   },
   {
     name: 'BANDWIDTH',
     detail: 'data movement',
     explanation: 'Data movement needs shape which parts of a workload should travel.',
+    followUp: 'Keeping transfers small can reduce pressure on limited connections.',
   },
   {
     name: 'PRIVACY',
     detail: 'data locality',
     explanation: 'Data locality can favor execution closer to its source.',
+    followUp: 'Local processing can also limit how much sensitive data travels.',
   },
   {
     name: 'BUDGET',
     detail: 'monthly guardrail',
     explanation: 'A monthly guardrail frames the trade-offs between tiers.',
+    followUp: 'Compare compute and network costs against the workload budget.',
   },
   {
     name: 'RESILIENCE',
     detail: 'failure impact',
     explanation: 'Failure impact informs where resilience belongs in the route.',
+    followUp: 'Critical workloads may need redundancy across more than one tier.',
   },
 ];
-
-function LandscapeSpectrum() {
-  const [selected, setSelected] = useState(2);
-  const tier = LANDSCAPE_TIERS[selected];
-
-  return (
-    <div className="spectrum-wrap">
-      <div className="visual-topline">
-        <span>DEPLOYMENT SPECTRUM / 04</span>
-        <span>LOCAL <i aria-hidden="true">←</i> PROXIMITY <i aria-hidden="true">→</i> CENTRALIZED</span>
-      </div>
-      <div
-        className="spectrum-visual"
-        role="group"
-        aria-label="Illustrative execution tier spectrum"
-        onPointerMove={updatePointerLight}
-      >
-        <svg viewBox="0 0 900 300" preserveAspectRatio="none" aria-hidden="true">
-          <path className="spectrum-haze" d="M25 213 C150 86 250 250 375 148 S605 84 875 156" />
-          {LANDSCAPE_TIERS.map((item, index) => (
-            <path
-              key={item.name}
-              className={`spectrum-segment ${selected === index ? 'is-active' : ''}`}
-              d={[
-                'M25 213 C75 150 110 117 190 132',
-                'M190 132 C260 148 300 204 415 176',
-                'M415 176 C530 148 585 94 690 115',
-                'M690 115 C760 127 815 150 875 156',
-              ][index]}
-            />
-          ))}
-          <path className="spectrum-underpath" d="M25 213 C150 86 250 250 375 148 S605 84 875 156" />
-        </svg>
-        {LANDSCAPE_TIERS.map((item, index) => (
-          <button
-            key={item.name}
-            className={`spectrum-node spectrum-node-${index} ${selected === index ? 'is-active' : ''}`}
-            type="button"
-            aria-pressed={selected === index}
-            onMouseEnter={() => setSelected(index)}
-            onFocus={() => setSelected(index)}
-            onClick={() => setSelected(index)}
-          >
-            <span className="spectrum-orbit" aria-hidden="true">
-              <i />
-            </span>
-            <strong>{item.name}</strong>
-            <small>{item.distance}</small>
-          </button>
-        ))}
-      </div>
-      <div className="spectrum-caption" aria-live="polite">
-        <div>
-          <strong>{tier.title}</strong>
-          <p>{tier.description}</p>
-        </div>
-        <span>ILLUSTRATIVE PLACEMENT MAP</span>
-      </div>
-      <p className="visual-caveat">Exploration only — this spectrum does not show live backend scoring.</p>
-    </div>
-  );
-}
 
 function SignalGraph() {
   const [selected, setSelected] = useState(0);
@@ -431,7 +375,6 @@ function SignalGraph() {
     <div className="signal-graph-wrap">
       <div className="visual-topline signal-topline">
         <span>DECISION SIGNALS / 05</span>
-        <span>ILLUSTRATIVE INPUTS · NOT LIVE SCORING</span>
       </div>
       <div
         className="signal-graph"
@@ -472,7 +415,6 @@ function SignalGraph() {
             key={item.name}
             type="button"
             aria-pressed={selected === index}
-            onMouseEnter={() => setSelected(index)}
             onFocus={() => setSelected(index)}
             onClick={() => setSelected(index)}
           >
@@ -483,7 +425,7 @@ function SignalGraph() {
       </div>
       <div className="signal-caption" aria-live="polite">
         <strong><i aria-hidden="true" /> {signal.name}</strong>
-        <p>{signal.explanation}</p>
+        <p>{signal.explanation} {signal.followUp}</p>
       </div>
       <p className="visual-caveat">Sample explanations only — no signal is being scored here.</p>
     </div>
@@ -577,41 +519,41 @@ function Overview({ setPath }) {
             EdgePilot finds the right execution tier for your workload — balancing speed,
             privacy, cost, and scale.
           </p>
-          <div className="button-row">
-            <button
-              className="button button-primary"
-              type="button"
-              onClick={() => navigateTo('/analyzer', setPath)}
-            >
-              Analyze workload <span aria-hidden="true">→</span>
-            </button>
-          </div>
-          <p className="technical-note">
-            ILLUSTRATIVE SAMPLE ENVIRONMENT · RECOMMENDATIONS BECOME LIVE ONLY AFTER ANALYSIS
-          </p>
         </section>
-        <DeploymentMap />
       </section>
       <section
-        className="story-section landscape-section"
-        aria-labelledby="landscape-title"
+        className="story-section deployment-section"
+        aria-labelledby="deployment-title"
         onPointerMove={updatePointerLight}
       >
-        <div className="story-copy landscape-copy">
-          <p className="section-kicker">01 / EXECUTION LANDSCAPE</p>
-          <h2 id="landscape-title">
-            One workload.
-            <br />
-            <span>Four places</span>
-            <br />
-            <span>to run it.</span>
-          </h2>
-          <p>
-            Move through the spectrum to see how distance, scale, and data locality
-            change the shape of a deployment.
-          </p>
+        <div className="deployment-heading">
+          <p className="section-kicker">01 / EXECUTION TIERS</p>
+          <h2 id="deployment-title">One workload. Four places to run it.</h2>
         </div>
-        <LandscapeSpectrum />
+        <div className="deployment-visual">
+          <DeploymentMap />
+        </div>
+        <div className="execution-summary">
+          <span>FOUR TIERS / ONE WORKLOAD</span>
+          <div className="execution-tiers" role="list">
+            <div role="listitem">
+              <strong>On-device</strong>
+              <p>Private, immediate execution close to the data.</p>
+            </div>
+            <div role="listitem">
+              <strong>Far edge</strong>
+              <p>Nearby compute for responsive workloads.</p>
+            </div>
+            <div role="listitem">
+              <strong>Regional edge</strong>
+              <p>Balanced latency, locality, and scale.</p>
+            </div>
+            <div role="listitem">
+              <strong>Cloud</strong>
+              <p>Centralized capacity with room to scale.</p>
+            </div>
+          </div>
+        </div>
       </section>
       <section
         className="story-section signals-section"
@@ -1565,8 +1507,8 @@ function App() {
       gsap.registerPlugin(ScrollTrigger);
       context = gsap.context(() => {
         const transitions = [
-          { section: '.landscape-section', outgoing: '.overview-hero', incoming: '.spectrum-wrap' },
-          { section: '.signals-section', outgoing: '.spectrum-wrap', incoming: '.signal-graph-wrap' },
+          { section: '.deployment-section', outgoing: '.overview-hero', incoming: '.deployment-visual' },
+          { section: '.signals-section', outgoing: '.deployment-visual', incoming: '.signal-graph-wrap' },
           { section: '.placement-loop', outgoing: '.signal-graph-wrap', incoming: '.loop-diagram' },
         ];
 

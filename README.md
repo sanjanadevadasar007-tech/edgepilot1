@@ -5,12 +5,12 @@ across on-device, far-edge, regional-edge, and cloud tiers. It is an original
 recreation based on shared specifications and screenshots, not the original Manus
 source or a proprietary implementation.
 
-The Overview page presents one continuous four-stage visual story. Scroll-linked
-transitions carry attention from the workload scene into the deployment spectrum,
-through decision signals, and into the placement workflow. Its spectrum and
-decision-signal diagrams are interactive illustrative explainers, not live
-scoring or benchmark visualizations; headings and section changes avoid card
-frames and divider rules.
+The Overview opens with a large, text-only introduction, followed by a full
+deployment scene and a single summary of the four execution tiers. The next
+section presents interactive decision signals with a selected-signal explanation
+below the diagram, followed by the placement workflow. The scene and
+decision-signal diagram are illustrative explainers, not live scoring or benchmark
+visualizations; headings and section changes avoid card frames and divider rules.
 
 The Overview is a continuous, scroll-driven scene rather than a set of dashboard
 cards. Its deployment visualization is a lazy-loaded React Three Fiber scene with
