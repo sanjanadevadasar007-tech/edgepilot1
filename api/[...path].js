@@ -18,11 +18,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed.' });
   }
 
-  const backendUrl = process.env.API_BACKEND_URL;
+  const backendUrl = process.env.BACKEND_URL;
   const apiAuthToken = process.env.API_AUTH_TOKEN;
   if (!backendUrl || !apiAuthToken) {
     return res.status(503).json({
-      error: 'Backend proxy is not configured. Set API_BACKEND_URL and API_AUTH_TOKEN.',
+      error: 'Backend proxy is not configured. Set the backend binding and API_AUTH_TOKEN.',
     });
   }
 
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
       throw new Error('Backend URL must use HTTP or HTTPS.');
     }
   } catch (error) {
-    console.error('Invalid API_BACKEND_URL configuration', error);
+    console.error('Invalid backend service binding', error);
     return res.status(500).json({ error: 'Backend proxy URL is invalid.' });
   }
 
