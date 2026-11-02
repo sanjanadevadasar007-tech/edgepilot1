@@ -331,32 +331,32 @@ const DECISION_SIGNALS = [
   {
     name: 'LATENCY',
     detail: 'response time',
-    explanation: 'Tighter response targets pull the route toward nearby execution.',
-    followUp: 'Shorter network paths can help meet a strict response-time target.',
+    explanation: 'Some tasks need to be completed very quickly, without waiting too long.',
+    followUp: 'Doing the work closer to the user can help the system respond faster.',
   },
   {
     name: 'BANDWIDTH',
     detail: 'data movement',
-    explanation: 'Data movement needs shape which parts of a workload should travel.',
-    followUp: 'Keeping transfers small can reduce pressure on limited connections.',
+    explanation: 'Some tasks need to send a lot of data over the internet.',
+    followUp: 'Sending less data can make things work better when the internet is slow.',
   },
   {
     name: 'PRIVACY',
     detail: 'data locality',
-    explanation: 'Data locality can favor execution closer to its source.',
-    followUp: 'Local processing can also limit how much sensitive data travels.',
+    explanation: 'Some information is private and should not be shared with others.',
+    followUp: 'Keeping private information closer to where it is collected can help protect it.',
   },
   {
     name: 'BUDGET',
     detail: 'monthly guardrail',
-    explanation: 'A monthly guardrail frames the trade-offs between tiers.',
-    followUp: 'Compare compute and network costs against the workload budget.',
+    explanation: 'Every task has a cost, and it is important to stay within the available budget.',
+    followUp: 'Choosing a cheaper option can help save money while getting the work done.',
   },
   {
     name: 'RESILIENCE',
     detail: 'failure impact',
-    explanation: 'Failure impact informs where resilience belongs in the route.',
-    followUp: 'Critical workloads may need redundancy across more than one tier.',
+    explanation: 'Some tasks are very important and should keep working even when something goes wrong.',
+    followUp: 'Having a backup system can help things continue working if the main system stops.',
   },
 ];
 
@@ -669,7 +669,8 @@ function WorkloadSignalPreview({ workload }) {
 
 function Analyzer({ workload, setWorkload, onAnalyze, busy }) {
   const [applicationType, setApplicationType] = useState('');
-  const [modelSize, setModelSize] = useState('');
+  const [modelRamRequiredMb, setModelRamRequiredMb] = useState('');
+  const [deviceAvailableRamMb, setDeviceAvailableRamMb] = useState('');
   const [benchmarkProfile, setBenchmarkProfile] = useState('');
 
   function updateWorkload(event) {
@@ -696,12 +697,16 @@ function Analyzer({ workload, setWorkload, onAnalyze, busy }) {
     const budget = Number(workload.budget_monthly);
     if (!Number.isFinite(budget) || budget < 0) return;
 
+    const applicationTypeValue = applicationType.trim();
     onAnalyze({
       latency_requirement_ms: Number(workload.latency_requirement_ms),
       bandwidth_requirement: workload.bandwidth_requirement,
       budget_monthly: budget,
       privacy_requirement: workload.privacy_requirement,
       criticality: workload.criticality,
+      ...(applicationTypeValue ? { application_type: applicationTypeValue } : {}),
+      ...(modelRamRequiredMb !== '' ? { model_ram_required_mb: Number(modelRamRequiredMb) } : {}),
+      ...(deviceAvailableRamMb !== '' ? { device_available_ram_mb: Number(deviceAvailableRamMb) } : {}),
       ...(benchmarkProfile ? BENCHMARK_PROFILES[benchmarkProfile] : {}),
     });
   }
@@ -725,7 +730,7 @@ function Analyzer({ workload, setWorkload, onAnalyze, busy }) {
           </p>
           <span className="analyzer-data-note">
             <i aria-hidden="true" />
-            Only required fields are sent for analysis
+            Required fields and any optional context are sent for analysis
           </span>
         </div>
       </header>
@@ -804,27 +809,51 @@ function Analyzer({ workload, setWorkload, onAnalyze, busy }) {
           <WorkloadSignalPreview workload={workload} />
         </div>
         <fieldset className="optional-fields">
-          <legend>Optional context — application notes stay local</legend>
+          <legend>Optional workload context — included in analysis</legend>
           <div className="form-grid">
             <label className="field">
               <span>Application type</span>
               <input
                 type="text"
+                maxLength={128}
                 value={applicationType}
                 onChange={(event) => setApplicationType(event.target.value)}
-                placeholder="e.g. vision inspection"
+                placeholder="e.g. smart_camera"
+              />
+              <small>
+                Use a workload label such as smart_camera to match evidence; benchmark profiles provide their own label.
+              </small>
+            </label>
+            <label className="field">
+              <span>Model RAM required <small>(MB)</small></span>
+              <input
+                id="model-ram-required"
+                type="number"
+                min="0.001"
+                step="any"
+                inputMode="decimal"
+                value={modelRamRequiredMb}
+                onChange={(event) => setModelRamRequiredMb(event.target.value)}
+                placeholder="e.g. 256"
               />
             </label>
             <label className="field">
-              <span>Model size</span>
+              <span>Available device RAM <small>(MB)</small></span>
               <input
-                type="text"
-                value={modelSize}
-                onChange={(event) => setModelSize(event.target.value)}
-                placeholder="e.g. 2B parameters"
+                id="device-available-ram"
+                type="number"
+                min="0.001"
+                step="any"
+                inputMode="decimal"
+                value={deviceAvailableRamMb}
+                onChange={(event) => setDeviceAvailableRamMb(event.target.value)}
+                placeholder="e.g. 1024"
               />
             </label>
           </div>
+          <p className="technical-note">
+            RAM values are optional and inform on-device memory feasibility. They are not inferred from parameter count.
+          </p>
         </fieldset>
         <fieldset className="optional-fields benchmark-profile-fields">
           <legend>Optional Qualcomm inference benchmark match</legend>
@@ -947,91 +976,91 @@ function DeploymentRouteDiagram({ recommendation, scores, hasResult, resultSourc
               : 'Workload connected to four deployment tiers. Run an analysis to see the service recommendation.'
           }
         >
-        <defs>
-          <radialGradient id="route-core-glow">
-            <stop offset="0" stopColor="#c8b4ff" stopOpacity=".72" />
-            <stop offset="1" stopColor="#8769e8" stopOpacity="0" />
-          </radialGradient>
-          <linearGradient id="route-selected-gradient" x1="0" x2="1">
-            <stop offset="0" stopColor="#7abdd2" />
-            <stop offset="1" stopColor="#c0a0ff" />
-          </linearGradient>
-        </defs>
-        {destinations.map(({ tier, y }) => {
-          const id = `route-${normalizeTierKey(tier)}`;
-          const path = `M 118 147 C 220 147, 225 ${y}, 359 ${y}`;
-          const selected = hasResult && id === selectedId;
-          const score = scores.find(([scoreTier]) => scoreTier === tier)?.[1] ?? null;
+          <defs>
+            <radialGradient id="route-core-glow">
+              <stop offset="0" stopColor="#c8b4ff" stopOpacity=".72" />
+              <stop offset="1" stopColor="#8769e8" stopOpacity="0" />
+            </radialGradient>
+            <linearGradient id="route-selected-gradient" x1="0" x2="1">
+              <stop offset="0" stopColor="#7abdd2" />
+              <stop offset="1" stopColor="#c0a0ff" />
+            </linearGradient>
+          </defs>
+          {destinations.map(({ tier, y }) => {
+            const id = `route-${normalizeTierKey(tier)}`;
+            const path = `M 118 147 C 220 147, 225 ${y}, 359 ${y}`;
+            const selected = hasResult && id === selectedId;
+            const score = scores.find(([scoreTier]) => scoreTier === tier)?.[1] ?? null;
 
-          return (
-            <g key={tier}>
-              <path id={id} className={`route-path ${selected ? 'is-selected' : ''}`} d={path} />
-              {selected && (
-                <>
-                  <path className="route-path route-path-highlight" d={path} />
-                  {motionAllowed ? (
-                    <circle className="route-packet" r="3.5" aria-hidden="true">
-                      <animateMotion dur="5s" repeatCount="indefinite">
-                        <mpath href={`#${id}`} />
-                      </animateMotion>
-                    </circle>
-                  ) : (
-                    <circle
-                      className="route-packet"
-                      cx="239"
-                      cy={(147 + y) / 2}
-                      r="3.5"
-                      aria-hidden="true"
-                    />
-                  )}
-                </>
-              )}
-              <circle
-                className={`route-destination ${selected ? 'is-selected' : ''}`}
-                cx="359"
-                cy={y}
-                r={selected ? '8' : '5'}
-              />
-              {selected && (
-                <circle className="route-destination-halo" cx="359" cy={y} r="18" />
-              )}
-              <text className={`route-label ${selected ? 'is-selected' : ''}`} x="386" y={y - 3}>
-                {tier}
-              </text>
-              <text className={`route-score ${score === null ? 'is-missing' : ''}`} x="386" y={y + 13}>
-                {score === null ? 'SCORE NOT PROVIDED' : `SCORE ${score} / 100`}
-              </text>
-              {score !== null && (
-                <>
-                  <rect className="route-score-track" x="386" y={y + 19} width="92" height="3" rx="1.5" />
-                  <rect
-                    className={`route-score-fill ${selected ? 'is-selected' : ''}`}
-                    x="386"
-                    y={y + 19}
-                    width={Math.max(0, Math.min(92, score * 0.92))}
-                    height="3"
-                    rx="1.5"
-                  />
-                </>
-              )}
-              {selected && (
-                <text className="route-selected-label" x="386" y={y + 33}>
-                  RECOMMENDED
+            return (
+              <g key={tier}>
+                <path id={id} className={`route-path ${selected ? 'is-selected' : ''}`} d={path} />
+                {selected && (
+                  <>
+                    <path className="route-path route-path-highlight" d={path} />
+                    {motionAllowed ? (
+                      <circle className="route-packet" r="3.5" aria-hidden="true">
+                        <animateMotion dur="5s" repeatCount="indefinite">
+                          <mpath href={`#${id}`} />
+                        </animateMotion>
+                      </circle>
+                    ) : (
+                      <circle
+                        className="route-packet"
+                        cx="239"
+                        cy={(147 + y) / 2}
+                        r="3.5"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </>
+                )}
+                <circle
+                  className={`route-destination ${selected ? 'is-selected' : ''}`}
+                  cx="359"
+                  cy={y}
+                  r={selected ? '8' : '5'}
+                />
+                {selected && (
+                  <circle className="route-destination-halo" cx="359" cy={y} r="18" />
+                )}
+                <text className={`route-label ${selected ? 'is-selected' : ''}`} x="386" y={y - 3}>
+                  {tier}
                 </text>
-              )}
-            </g>
-          );
-        })}
-        <circle className="route-core-halo" cx="87" cy="147" r="56" fill="url(#route-core-glow)" />
-        <circle className="route-core-ring" cx="87" cy="147" r="31" />
-        <circle className="route-core" cx="87" cy="147" r="19" />
-        <text className="route-core-title" x="87" y="145" textAnchor="middle">AI</text>
-        <text className="route-core-caption" x="87" y="161" textAnchor="middle">WORKLOAD</text>
-        {!hasResult && (
-          <text className="route-empty-caption" x="258" y="286" textAnchor="middle">
-            A ROUTE APPEARS AFTER ANALYSIS
-          </text>
-        )}
+                <text className={`route-score ${score === null ? 'is-missing' : ''}`} x="386" y={y + 13}>
+                  {score === null ? 'SCORE NOT PROVIDED' : `SCORE ${score} / 100`}
+                </text>
+                {score !== null && (
+                  <>
+                    <rect className="route-score-track" x="386" y={y + 19} width="92" height="3" rx="1.5" />
+                    <rect
+                      className={`route-score-fill ${selected ? 'is-selected' : ''}`}
+                      x="386"
+                      y={y + 19}
+                      width={Math.max(0, Math.min(92, score * 0.92))}
+                      height="3"
+                      rx="1.5"
+                    />
+                  </>
+                )}
+                {selected && (
+                  <text className="route-selected-label" x="386" y={y + 33}>
+                    RECOMMENDED
+                  </text>
+                )}
+              </g>
+            );
+          })}
+          <circle className="route-core-halo" cx="87" cy="147" r="56" fill="url(#route-core-glow)" />
+          <circle className="route-core-ring" cx="87" cy="147" r="31" />
+          <circle className="route-core" cx="87" cy="147" r="19" />
+          <text className="route-core-title" x="87" y="145" textAnchor="middle">AI</text>
+          <text className="route-core-caption" x="87" y="161" textAnchor="middle">WORKLOAD</text>
+          {!hasResult && (
+            <text className="route-empty-caption" x="258" y="286" textAnchor="middle">
+              A ROUTE APPEARS AFTER ANALYSIS
+            </text>
+          )}
         </svg>
       </div>
       <div className="deployment-route-legend" aria-hidden="true">
@@ -1048,8 +1077,10 @@ function DeploymentRouteDiagram({ recommendation, scores, hasResult, resultSourc
   );
 }
 
-function InfoCard({ title, items }) {
-  const values = Array.isArray(items) && items.length > 0 ? items : [`No ${title.toLowerCase()} returned by the service.`];
+function InfoCard({ title, items, emptyMessage }) {
+  const values = Array.isArray(items) && items.length > 0
+    ? items
+    : [emptyMessage && !Array.isArray(items) ? emptyMessage : `No ${title.toLowerCase()} returned by the service.`];
   const kind = title.toLowerCase().replace(/[^a-z]+/g, '-');
   const icon = { warnings: '!', 'trade-offs': '↔', assumptions: '⌁' }[kind] ?? '◈';
 
@@ -1084,12 +1115,39 @@ function Results({
 }) {
   const baselineLatency = Number(reportWorkload?.latency_requirement_ms ?? 50);
   const [scenarioLatency, setScenarioLatency] = useState(baselineLatency);
-  useEffect(() => setScenarioLatency(baselineLatency), [baselineLatency]);
+  const baselinePrivacy = reportWorkload?.privacy_requirement;
+  const [scenarioPrivacy, setScenarioPrivacy] = useState(baselinePrivacy ?? 'medium');
+  const baselineNetworkAvailable = reportWorkload?.network_available;
+  const [scenarioNetworkAvailable, setScenarioNetworkAvailable] = useState(
+    typeof baselineNetworkAvailable === 'boolean' ? baselineNetworkAvailable : null,
+  );
+  const baselineDeviceRam = reportWorkload?.device_available_ram_mb;
+  const baselineModelRam = reportWorkload?.model_ram_required_mb;
+  const hasModelRamRequirement =
+    baselineModelRam != null && baselineModelRam !== '' &&
+    Number.isFinite(Number(baselineModelRam)) && Number(baselineModelRam) > 0;
+  const [scenarioDeviceRam, setScenarioDeviceRam] = useState(
+    baselineDeviceRam == null ? '' : String(baselineDeviceRam),
+  );
+  useEffect(() => {
+    setScenarioLatency(baselineLatency);
+    setScenarioPrivacy(baselinePrivacy ?? 'medium');
+    setScenarioNetworkAvailable(
+      typeof baselineNetworkAvailable === 'boolean' ? baselineNetworkAvailable : null,
+    );
+    setScenarioDeviceRam(baselineDeviceRam == null ? '' : String(baselineDeviceRam));
+  }, [baselineLatency, baselinePrivacy, baselineNetworkAvailable, baselineDeviceRam]);
   const hasResult = resultSource !== null;
   const hasLiveResult = resultSource === 'live';
   const result = isRecord(resultData)
     ? resultData
     : {};
+  const simulationResponse = isRecord(simulationData) ? simulationData : null;
+  const hasSimulation = simulationResponse !== null;
+  const scenarioResult = isRecord(simulationResponse?.scenario)
+    ? simulationResponse.scenario
+    : {};
+  const currentResult = hasSimulation ? scenarioResult : result;
   const recommendation =
     result.recommendation || result.recommended_tier || 'Not provided';
   const recommendationLabel = formatTierName(recommendation);
@@ -1108,12 +1166,83 @@ function Results({
   const resultDetails = isRecord(result.details) ? result.details : {};
   const benchmark = isRecord(resultDetails.benchmark) ? resultDetails.benchmark : null;
   const comparison =
-    isRecord(simulationData) && isRecord(simulationData.comparison)
-      ? simulationData.comparison
+    isRecord(simulationResponse?.comparison)
+      ? simulationResponse.comparison
       : null;
-  const scoreDeltas = comparison && isRecord(comparison.score_deltas)
-    ? comparison.score_deltas
-    : {};
+  const scoreDeltas = isRecord(comparison?.score_deltas) ? comparison.score_deltas : {};
+  const scenarioScores = TIERS.map((tier) => {
+    const entry = Object.entries(scoreDeltas).find(
+      ([name]) => normalizeTierKey(name) === normalizeTierKey(tier),
+    );
+    return [tier, isRecord(entry?.[1]) ? entry[1] : null];
+  });
+  const changedInputs = Array.isArray(comparison?.changed_inputs)
+    ? comparison.changed_inputs.filter((item) => isRecord(item) && typeof item.field === 'string')
+    : null;
+  const metricsHandling = isRecord(comparison?.metrics_handling)
+    ? comparison.metrics_handling
+    : null;
+  const scenarioFeasibility = isRecord(scenarioResult.details?.feasibility)
+    ? Object.values(scenarioResult.details.feasibility).filter(isRecord)
+    : [];
+  const hasFeasibleScenarioOption = scenarioFeasibility.some((tier) => tier.eligible === true);
+  const hasNoScenarioRecommendation =
+    comparison?.new_tier === null ||
+    scenarioResult.recommended_tier === null ||
+    scenarioResult.recommendation === null ||
+    scenarioResult.details?.status === 'no_feasible_tier';
+  const hasNoFeasibleScenarioTier =
+    hasNoScenarioRecommendation &&
+    scenarioFeasibility.length > 0 &&
+    !hasFeasibleScenarioOption;
+  const hasScenarioTier =
+    !hasNoScenarioRecommendation &&
+    typeof comparison?.new_tier === 'string' &&
+    comparison.new_tier.length > 0;
+  const formatComparisonTier = (tier) => (
+    typeof tier === 'string'
+      ? formatTierName(tier)
+      : tier === null
+        ? 'No feasible tier'
+        : 'Unavailable'
+  );
+  const scenarioResultMessage = hasNoFeasibleScenarioTier
+    ? 'No feasible deployment tier found for the updated constraints.'
+    : hasNoScenarioRecommendation && hasFeasibleScenarioOption && metricsHandling?.mode === 'baseline_metrics_invalidated'
+      ? 'Eligible tiers remain, but the backend could not select a recommendation after baseline metrics were invalidated.'
+      : hasNoScenarioRecommendation
+        ? 'The backend did not return a deployment recommendation for this scenario.'
+    : comparison?.recommendation_changed === true && hasScenarioTier
+      ? `The leading tier changed from ${formatComparisonTier(comparison.original_tier)} to ${formatComparisonTier(comparison.new_tier)}.`
+      : comparison?.recommendation_changed === false && hasScenarioTier
+        ? `The leading tier stayed at ${formatTierName(comparison.new_tier)}.`
+        : typeof comparison?.explanation === 'string'
+          ? comparison.explanation
+          : 'Scenario result unavailable.';
+  const formatScore = (value) => (
+    value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))
+      ? Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 })
+      : 'Unavailable'
+  );
+  const formatScenarioValue = (value) => {
+    if (value === null || value === undefined) return 'Not provided';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+  const scenarioDeviceRamNumber = Number(scenarioDeviceRam);
+  const hasValidScenarioDeviceRam =
+    scenarioDeviceRam !== '' && Number.isFinite(scenarioDeviceRamNumber) && scenarioDeviceRamNumber > 0;
+  const hasDeviceRamChange =
+    hasModelRamRequirement && hasValidScenarioDeviceRam &&
+    scenarioDeviceRamNumber !== Number(baselineDeviceRam);
+  const hasLatencyChange = scenarioLatency !== baselineLatency;
+  const hasPrivacyChange = scenarioPrivacy !== baselinePrivacy;
+  const hasNetworkAvailabilityChange =
+    typeof scenarioNetworkAvailable === 'boolean' &&
+    scenarioNetworkAvailable !== baselineNetworkAvailable;
+  const hasScenarioChange =
+    hasLatencyChange || hasPrivacyChange || hasNetworkAvailabilityChange || hasDeviceRamChange;
   const benchmarkStatusLabel = benchmark?.status
     ? benchmark.status.replaceAll('_', ' ').toUpperCase()
     : hasLiveResult
@@ -1187,10 +1316,10 @@ function Results({
                 {typeof result.explanation === 'string' && result.explanation
                   ? result.explanation
                   : typeof result.rationale === 'string' && result.rationale
-                  ? result.rationale
-                  : typeof result.reasoning === 'string' && result.reasoning
-                    ? result.reasoning
-                    : 'The service did not provide a rationale.'}
+                    ? result.rationale
+                    : typeof result.reasoning === 'string' && result.reasoning
+                      ? result.reasoning
+                      : 'The service did not provide a rationale.'}
               </p>
               <div className="estimate-grid">
                 <div>
@@ -1211,7 +1340,7 @@ function Results({
             </div>
             <div>
               <p className="technical-label">SCENARIO EXPLORATION</p>
-              <h2>What if the latency target changed?</h2>
+              <h2>What if the workload constraints changed?</h2>
               <p>
                 Recalculate the route with the backend simulator. This is hypothetical; it does not deploy anything.
               </p>
@@ -1234,57 +1363,189 @@ function Results({
                 disabled={simulating}
                 aria-valuetext={`${scenarioLatency} milliseconds`}
               />
+              <span className="what-if-control-label">Privacy requirement</span>
+              <div className="what-if-segmented" role="group" aria-label="Privacy requirement">
+                {['low', 'medium', 'high'].map((level) => (
+                  <button
+                    key={level}
+                    className="what-if-segment"
+                    type="button"
+                    aria-pressed={scenarioPrivacy === level}
+                    onClick={() => {
+                      setScenarioPrivacy(level);
+                      onScenarioChange();
+                    }}
+                    disabled={simulating}
+                  >
+                    {level[0].toUpperCase() + level.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <span className="what-if-control-label">Network availability</span>
+              <div className="what-if-segmented" role="group" aria-label="Network availability">
+                {[
+                  [true, 'Available'],
+                  [false, 'Unavailable'],
+                ].map(([available, label]) => (
+                  <button
+                    key={label}
+                    className="what-if-segment"
+                    type="button"
+                    aria-pressed={scenarioNetworkAvailable === available}
+                    onClick={() => {
+                      setScenarioNetworkAvailable(available);
+                      onScenarioChange();
+                    }}
+                    disabled={simulating}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {typeof baselineNetworkAvailable !== 'boolean' && (
+                <small>Network availability was not specified in the baseline workload.</small>
+              )}
+              {hasModelRamRequirement ? (
+                <>
+                  <label htmlFor="scenario-device-ram">
+                    Available device RAM (MB)
+                  </label>
+                  <input
+                    id="scenario-device-ram"
+                    type="number"
+                    min="0.001"
+                    step="any"
+                    inputMode="decimal"
+                    value={scenarioDeviceRam}
+                    onChange={(event) => {
+                      setScenarioDeviceRam(event.target.value);
+                      onScenarioChange();
+                    }}
+                    disabled={simulating}
+                    aria-describedby="scenario-device-ram-note"
+                  />
+                  <small id="scenario-device-ram-note">
+                    Baseline model RAM requirement: {Number(baselineModelRam)} MB. Change available RAM to test on-device feasibility.
+                  </small>
+                </>
+              ) : (
+                <small>
+                  To simulate device RAM, add a valid Model RAM required (MB) value in the analyzer and run the analysis again.
+                </small>
+              )}
               <button
                 className="button button-outline"
                 type="button"
-                onClick={() => onSimulate({ latency_requirement_ms: scenarioLatency })}
-                disabled={!hasLiveResult || simulating || scenarioLatency === baselineLatency}
+                aria-live="polite"
+                onClick={() => onSimulate({
+                  ...(hasLatencyChange ? { latency_requirement_ms: scenarioLatency } : {}),
+                  ...(hasPrivacyChange ? { privacy_requirement: scenarioPrivacy } : {}),
+                  ...(hasNetworkAvailabilityChange ? { network_available: scenarioNetworkAvailable } : {}),
+                  ...(hasDeviceRamChange ? { device_available_ram_mb: scenarioDeviceRamNumber } : {}),
+                })}
+                disabled={!hasLiveResult || simulating || !hasScenarioChange}
               >
                 {simulating ? 'Simulating…' : 'Simulate what-if'}
               </button>
             </div>
           </section>
-          {comparison && (
+          {hasSimulation && (
             <section className="scenario-result panel" aria-live="polite">
               <div className="scenario-result-heading">
                 <div>
                   <p className="technical-label">BACKEND SCENARIO RESULT</p>
                   <h2>
-                    {comparison.recommendation_changed
-                      ? 'The leading tier changed.'
-                      : 'The leading tier stayed the same.'}
+                    {hasNoFeasibleScenarioTier
+                      ? 'No feasible deployment tier'
+                      : hasNoScenarioRecommendation
+                        ? 'No recommendation selected'
+                      : comparison?.recommendation_changed === true
+                        ? 'The leading tier changed.'
+                        : comparison?.recommendation_changed === false
+                          ? 'The leading tier stayed the same.'
+                          : 'Scenario result unavailable.'}
                   </h2>
                 </div>
                 <span>
-                  {comparison.original_tier
-                    ? formatTierName(comparison.original_tier)
-                    : 'No feasible tier'}{' '}
+                  {formatComparisonTier(comparison?.original_tier)}{' '}
                   →{' '}
-                  {comparison.new_tier
-                    ? formatTierName(comparison.new_tier)
-                    : 'No feasible tier'}
+                  {hasNoFeasibleScenarioTier
+                    ? 'No feasible tier'
+                    : hasNoScenarioRecommendation
+                      ? 'No recommendation'
+                    : hasScenarioTier
+                      ? formatTierName(comparison.new_tier)
+                      : formatComparisonTier(comparison?.new_tier)}
                 </span>
               </div>
-              <p>{comparison.explanation}</p>
-              {Object.keys(scoreDeltas).length > 0 && (
-                <div className="scenario-score-grid" aria-label="Tier score changes">
-                  {Object.entries(scoreDeltas).map(([tier, delta]) => (
-                    <div key={tier}>
-                      <span>{formatTierName(tier)}</span>
-                      <strong>
-                        {delta.before} → {delta.after}
-                        <small className={delta.delta > 0 ? 'score-up' : delta.delta < 0 ? 'score-down' : ''}>
-                          {delta.delta > 0 ? '+' : ''}{delta.delta}
-                        </small>
-                      </strong>
-                    </div>
-                  ))}
+              <p>{scenarioResultMessage}</p>
+              <p className={`scenario-feasibility ${
+                hasNoFeasibleScenarioTier
+                  ? 'is-infeasible'
+                  : hasNoScenarioRecommendation
+                    ? 'is-unavailable'
+                    : ''
+              }`}>
+                {hasNoFeasibleScenarioTier
+                  ? 'Feasibility: no feasible tier.'
+                  : hasNoScenarioRecommendation && hasFeasibleScenarioOption
+                    ? 'Some tiers pass hard feasibility checks, but there is not enough scenario evidence to select a winner.'
+                    : hasNoScenarioRecommendation
+                      ? 'Scenario feasibility could not be determined from the returned details.'
+                  : hasScenarioTier
+                    ? `Feasible scenario recommendation: ${formatTierName(comparison.new_tier)}.`
+                    : 'Scenario feasibility unavailable.'}
+              </p>
+              <div className="scenario-changes">
+                <h3>Changed inputs</h3>
+                {changedInputs && changedInputs.length > 0 ? (
+                  <ul>
+                    {changedInputs.map(({ field, before, after }) => (
+                      <li key={field}>
+                        <strong>{field.replaceAll('_', ' ')}</strong>
+                        <span>{formatScenarioValue(before)} → {formatScenarioValue(after)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{changedInputs ? 'No changed inputs returned.' : 'Changed inputs unavailable.'}</p>
+                )}
+              </div>
+              <div className="scenario-score-grid" aria-label="Tier score changes">
+                {scenarioScores.map(([tier, delta]) => (
+                  <div key={tier}>
+                    <span>{tier}</span>
+                    <strong>
+                      <span>Before {formatScore(delta?.before)}</span>
+                      <span>Scenario {formatScore(delta?.after)}</span>
+                      <small className={
+                        Number(delta?.delta) > 0
+                          ? 'score-up'
+                          : Number(delta?.delta) < 0
+                            ? 'score-down'
+                            : ''
+                      }>
+                        Change {delta && Number.isFinite(Number(delta.delta))
+                          ? `${Number(delta.delta) > 0 ? '+' : ''}${formatScore(delta.delta)}`
+                          : 'Unavailable'}
+                      </small>
+                    </strong>
+                  </div>
+                ))}
+              </div>
+              {metricsHandling ? (
+                <div className="scenario-metrics-note">
+                  <strong>
+                    {typeof metricsHandling.mode === 'string'
+                      ? metricsHandling.mode.replaceAll('_', ' ')
+                      : 'Evidence handling unavailable'}
+                  </strong>
+                  <p>{typeof metricsHandling.message === 'string' ? metricsHandling.message : 'Evidence handling explanation unavailable.'}</p>
                 </div>
+              ) : (
+                <p className="scenario-metrics-note">Evidence handling unavailable.</p>
               )}
-              {isRecord(comparison.metrics_handling) && (
-                <p className="scenario-metrics-note">{comparison.metrics_handling.message}</p>
-              )}
-              {Array.isArray(comparison.limitations) && comparison.limitations.length > 0 && (
+              {Array.isArray(comparison?.limitations) && comparison.limitations.length > 0 && (
                 <ul className="scenario-limitations">
                   {comparison.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
                 </ul>
@@ -1292,9 +1553,9 @@ function Results({
             </section>
           )}
           <div className="info-grid">
-            <InfoCard title="Warnings" items={result.warnings} />
-            <InfoCard title="Trade-offs" items={result.tradeoffs} />
-            <InfoCard title="Assumptions" items={result.assumptions} />
+            <InfoCard title="Warnings" items={currentResult.warnings} emptyMessage={hasSimulation ? 'Unavailable' : undefined} />
+            <InfoCard title="Trade-offs" items={currentResult.tradeoffs} emptyMessage={hasSimulation ? 'Unavailable' : undefined} />
+            <InfoCard title="Assumptions" items={currentResult.assumptions} emptyMessage={hasSimulation ? 'Unavailable' : undefined} />
           </div>
           <div className="result-actions">
             {hasLiveResult && (
